@@ -77,7 +77,6 @@ class c_TCPServer():
             self.data = self.client.recv(2048).decode('utf-8')
             self.data = self.data.split("|")
             self.ID = -1
-
             self.Command = self.data[0].lower()
             self.Payload = self.data[1]
 
