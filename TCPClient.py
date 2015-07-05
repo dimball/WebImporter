@@ -124,12 +124,12 @@ def resumequeue():
                     client("resume_job|" + j)
 if __name__ == "__main__":
     method = "copy"
-    #main(method)
+    main(method)
 
     #pause(2)
     #resume(2)
     #abortjob(0)
-    abortqueue()
+    #abortqueue()
     #pausequeue()
     #resumequeue()
 

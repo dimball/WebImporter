@@ -85,6 +85,7 @@ class c_TCPServer():
                 print("Creating Job : " + str(self.ID))
                 self.dict_WorkData["paused_" + str(self.ID)] = -1
                 self.task_queue.put(str(self.ID) + "|" + self.Payload)
+                #self.dict_Jobs[str(self.ID)] = c_Task(str(self.ID))
                 self.dict_WorkData[str(self.ID)] = True
                 self.dict_Jobs[str(self.ID)] = self.Payload
                 self.client.send(bytes(str(self.ID) ,'utf-8'))
@@ -139,6 +140,11 @@ class c_TCPServer():
 
 
             self.client.close()
+
+class c_Task():
+    def __init__(self,task_id):
+        self.taskid = task_id
+        self.CopyTasks = []
 
 class c_Main():
     def __init__(self):
