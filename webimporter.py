@@ -6,6 +6,8 @@ import os
 import uuid
 import shutil
 import time
+import json
+
 #The copy worker is a class that runs constantly on a thread. If there is something in the task queue, then it will do it,
 #if not then it will lie idle until there is something there
 def CopyWorker(task_queue, dict_Jobs, dict_Data, worker_name):
@@ -76,16 +78,17 @@ def TCPServer(socket,task_queue, dict_Jobs):
     while True:
         client, address = socket.accept()
         #logger.debug("{u} connected".format(u=address))
-        data = client.recv(2048).decode('utf-8')
-        data = data.split("|")
-        ID = -1
-        Command = data[0].lower()
-        Payload = data[1]
+        data = client.recv(16348).decode('utf-8')
+        data = json.loads(data)
+        ID = uuid.uuid4()
+        Command = data["command"].lower()
+        Payload = data["payload"]
         if Command == "create_copytask":
-            ID = uuid.uuid4()
-            print("Creating task : " + str(ID))
-            dict_Jobs[str(ID)] = CreateTask(str(ID),Payload)
-            client.send(bytes(str(ID) ,'utf-8'))
+            for pl in Payload:
+                print("Creating task : " + str(ID))
+                dict_Jobs[str(ID)] = CreateTask(str(ID),pl)
+
+        client.send(bytes(str(ID) ,'utf-8'))
         elif Command == "start_task":
             if Payload in dict_Jobs:
                 if dict_Jobs[Payload]["active"] == False:

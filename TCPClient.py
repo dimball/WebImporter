@@ -4,6 +4,8 @@ import socket
 import random
 import time
 import select
+import json
+import os
 def client(string):
     HOST, PORT = 'localhost', 9090
     # SOCK_STREAM == a TCP socket
@@ -36,10 +38,27 @@ def client(string):
     #return reply
 
 def create_copytask():
-    JobList = ['create_copytask|c:/Data2','create_copytask|c:/Data2','create_copytask|c:/Data3']
-    #,'create_copytask|c:/Data2', 'create_copytask|c:/Data1','create_copytask|c:/Data3'
-    for j in JobList:
-        client(j)
+
+    data = {}
+    JobList = ['c:/Data2','c:/Data2','c:/Data3','temp.dat','somefile.exe','file.bat']
+    data["command"] = 'create_copytask'
+    data["payload"] = []
+
+
+    for pl in JobList:
+        payload = {}
+        head, tail = os.path.split(pl)
+        if len(tail.split(".")) > 1:
+            payload["type"] = "file"
+        else:
+            payload["type"] = "folder"
+
+        payload["data"] = pl
+        data["payload"].append(payload)
+
+    json_data = json.dumps(data)
+    client(json_data)
+
 def start_task(slot):
     aJobs = client('get_tasks|0')
     if aJobs != None:
@@ -132,11 +151,11 @@ def modify(slot,Payload):
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    removecompleted()
-    #create_copytask()
-    start_task(0)
-    start_task(1)
-    start_task(2)
+    #®removecompleted()
+    create_copytask()
+    #start_task(0)
+    #start_task(1)
+    #start_task(2)
 
     #pause(0)
     #pause(1)git
@@ -147,4 +166,4 @@ if __name__ == "__main__":
 
 
     #removeincompletetasks()
-    CheckStatus()
+    #CheckStatus()
