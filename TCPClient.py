@@ -23,7 +23,7 @@ def client(string):
     if ready[0]:
         reply = sock.recv(16348)  # limit reply to 16K
         if len(reply)>0:
-            if (reply.decode('utf8')) != "No Data":
+            if (reply.decode('utf8')) != "Not started":
                 print("reply => " + (reply.decode('utf8')))
             else:
                 print("reply => Job not started")
@@ -35,25 +35,28 @@ def client(string):
         sock.close()
     #return reply
 
-def main(method):
-    jobs = []
+def create_copytask():
+    JobList = ['create_copytask|c:/Data2','create_copytask|c:/Data2','create_copytask|c:/Data3']
+    #,'create_copytask|c:/Data2', 'create_copytask|c:/Data1','create_copytask|c:/Data3'
+    for j in JobList:
+        client(j)
+def start_task(slot):
+    aJobs = client('get_tasks|0')
+    if aJobs != None:
+        aJobs = aJobs.split("|")
+        if len(aJobs)>0:
+            if slot < len(aJobs)-1:
+                response = client("start_task|" + aJobs[slot])
+                print(response)
+        else:
+            print("no jobs on server")
 
-
-    if method == "copy":
-        JobList = ['copy|c:/Data1','copy|c:/Data1','copy|c:/Data2', 'copy|c:/Data1','copy|c:/Data3']
-        #,'copy|c:/Data1','copy|c:/Data2', 'copy|c:/Data1','copy|c:/Data3'
-        for j in JobList:
-            id = client(j)
-            #time.sleep(1)
-
-
-
-def CheckStatus(method):
+def CheckStatus():
     jobs_lookup = {}
-    aJobs = client('getjobs|0')
+    aJobs = client('get_tasks|0')
     if aJobs != None:
         jobs = aJobs.split("|")
-        print("Number of active jobs:" + str(len(jobs)))
+        print("Number of active jobs:" + str(len(jobs)-1))
         for job in jobs:
             if job != "":
                 jobs_lookup[job] = True
@@ -61,27 +64,22 @@ def CheckStatus(method):
         while len(jobs_lookup)>0:
             for job in jobs:
                 if job in jobs_lookup:
-                    if method == "abort":
-                        response = client("abort_job|" + job)
+                    response = client("status|" + job)
+                    if response == "Job Complete":
                         del jobs_lookup[job]
-
-                    elif method == "copy":
-                        response = client("status|" + job)
-                        if response == "100.0":
-                            del jobs_lookup[job]
-                        time.sleep(0.5)
+                    time.sleep(0.5)
 
         print("ended")
     else:
         print("No active jobs on server")
 def pause(slot):
-    aJobs = client('getjobs|0')
+    aJobs = client('get_tasks|0')
     if aJobs != None:
         aJobs = aJobs.split("|")
         if slot < len(aJobs)-1:
            client("pause_job|" + aJobs[slot])
 def resume(slot):
-    aJobs = client('getjobs|0')
+    aJobs = client('get_tasks|0')
     if aJobs != None:
         aJobs = aJobs.split("|")
         if len(aJobs)>0:
@@ -91,23 +89,8 @@ def resume(slot):
         else:
             print("no jobs on server")
 
-def abortjob(slot):
-    aJobs = client('getjobs|0')
-
-    if aJobs != None:
-        aJobs = aJobs.split("|")
-        if slot < len(aJobs)-1:
-           client("abort_job|" + aJobs[slot])
-
-def abortqueue():
-    aJobs = client('getjobs|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
-        if len(aJobs)>0:
-            client("abort_queue|0")
-
 def pausequeue():
-    aJobs = client('getjobs|0')
+    aJobs = client('get_tasks|0')
     if aJobs != None:
         aJobs = aJobs.split("|")
         if len(aJobs)>0:
@@ -115,22 +98,52 @@ def pausequeue():
                 if j != "":
                     client("pause_job|" + j)
 def resumequeue():
-    aJobs = client('getjobs|0')
+    aJobs = client('get_tasks|0')
     if aJobs != None:
         aJobs = aJobs.split("|")
         if len(aJobs)>0:
             for j in aJobs:
                 if j != "":
                     client("resume_job|" + j)
-if __name__ == "__main__":
-    method = "copy"
-    main(method)
 
-    #pause(2)
-    #resume(2)
-    #abortjob(0)
-    #abortqueue()
+def removecompleted():
+    aJobs = client('get_tasks|0')
+    if aJobs != None:
+        aJobs = aJobs.split("|")
+        if len(aJobs)>0:
+            client("remove_completed_tasks|0")
+    else:
+        print("No tasks on server")
+def removeincompletetasks():
+    aJobs = client('get_tasks|0')
+    if aJobs != None:
+        aJobs = aJobs.split("|")
+        if len(aJobs)>0:
+            client("remove_incomplete_tasks|0")
+    else:
+        print("No tasks on server")
+def modify(slot,Payload):
+    aJobs = client('get_tasks|0')
+    if aJobs != None:
+        aJobs = aJobs.split("|")
+        if len(aJobs)>0:
+            if slot < len(aJobs)-1:
+                response = client("modify_task|" + aJobs[slot] + "@" + Payload)
+        else:
+            print("no jobs on server")
+if __name__ == "__main__":
+    # create_copytask()
+    #start_task(0)
+    # start_task(1)
+    # start_task(2)
+
+    #pause(0)
+    #pause(1)git
+    #resume(0)
+    #resume(1)
     #pausequeue()
     #resumequeue()
 
-    CheckStatus(method)
+    # removecompleted()
+    #removeincompletetasks()
+    CheckStatus()
