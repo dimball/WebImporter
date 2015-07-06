@@ -132,10 +132,11 @@ def modify(slot,Payload):
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    # create_copytask()
-    #start_task(0)
-    # start_task(1)
-    # start_task(2)
+    removecompleted()
+    #create_copytask()
+    start_task(0)
+    start_task(1)
+    start_task(2)
 
     #pause(0)
     #pause(1)git
@@ -144,6 +145,6 @@ if __name__ == "__main__":
     #pausequeue()
     #resumequeue()
 
-    # removecompleted()
+
     #removeincompletetasks()
     CheckStatus()

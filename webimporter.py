@@ -46,7 +46,7 @@ def CopyWorker(task_queue, dict_Jobs, dict_Data, worker_name):
                 dProxy["active"] = False
                 dict_Jobs[ID] = dProxy
                 print("Finished job")
-            time.sleep(0.1)
+            time.sleep(0.01)
 def get_filepaths(directory):
         """
         This function will generate the file names in a directory
