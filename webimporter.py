@@ -22,16 +22,14 @@ def CopyWorker(task_queue, dict_Jobs, dict_Data, worker_name):
         # Run the above function and store its results in a variable.
         full_file_paths = get_filepaths(Path)  # List which will store all of the full filepaths.
         for f in range(dict_Jobs[ID]["PauseIndex"], len(full_file_paths)):
-            print(f)
             #copy the actual file here
             srcfile = full_file_paths[f]
-
             head,tail = os.path.splitdrive(srcfile)
             dstfile = os.path.normpath("d:/destination/" + ID + "/" + tail)
             if not os.path.exists(os.path.dirname(dstfile)):
                 os.makedirs(os.path.dirname(dstfile))
 
-            # #shutil.copy2(srcfile, dstfile)
+            #shutil.copy2(srcfile, dstfile)
             print(srcfile + " ==> " + (dstfile))
             dProxy = dict_Jobs[ID]
             dProxy["progress"] = f/(len(full_file_paths)-1)*100
@@ -66,7 +64,6 @@ def get_filepaths(directory):
                 file_paths.append(filepath)  # Add it to the list.
 
         return file_paths  # Self-explanatory.
-
 def CreateTask(ID,Payload):
     Task = {}
     Task["taskid"] = str(ID)
@@ -75,7 +72,6 @@ def CreateTask(ID,Payload):
     Task["progress"] = 0
     Task["PauseIndex"] = -1
     return Task
-
 def TCPServer(socket,task_queue, dict_Jobs):
     while True:
         client, address = socket.accept()
@@ -184,20 +180,6 @@ def TCPServer(socket,task_queue, dict_Jobs):
 
 
         client.close()
-
-def GenerateUUID(self):
-    return uuid.uuid4()
-
-# class c_Task():
-#     def __init__(self,task_id):
-#         self.taskid = task_id
-#         self.Payload = None
-#         self.PausedIndex = -1
-#         self.started = False
-#         self.active = False
-#         self.progress = 0
-#         self.abort = False
-
 if __name__ == '__main__':
     serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -213,11 +195,8 @@ if __name__ == '__main__':
     dict_Jobs = Manager.dict()
     task_queue = Manager.Queue()
     CopyWorkerPool = mp.Pool(processes=dict_WorkData["num_copyworkers"])
-
     for i in range(dict_WorkData["num_copyworkers"]):
         CopyWorkerPool.apply_async(CopyWorker, (task_queue, dict_Jobs, dict_WorkData, "copy_Worker_" + str(i)))
-
     TCPWorker = mp.Process(target=TCPServer, args=(serversocket,task_queue, dict_Jobs))
-
     TCPWorker.start()
     TCPWorker.join()
