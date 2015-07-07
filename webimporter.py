@@ -1,7 +1,8 @@
 import multiprocessing as mp
 import logging
 import socket
-logger = mp.log_to_stderr(logging.DEBUG)
+#logger = mp.log_to_stderr()
+#logger.setLevel(mp.SUBDEBUG)
 import os
 import uuid
 import shutil
@@ -10,45 +11,41 @@ import json
 
 #The copy worker is a class that runs constantly on a thread. If there is something in the task queue, then it will do it,
 #if not then it will lie idle until there is something there
-def CopyWorker(task_queue, dict_Jobs, dict_Data, worker_name):
+
+def CopyWorker(dict_Jobs, dict_Data, worker_name,worker_queue,result_queue,Data):
+    #print("inside")
     print("Copy worker Started:" + worker_name)
     while True:
-        next_task = task_queue.get()
-        if next_task is None:
-             break
+        next_task = worker_queue.get()
+        result_queue.put(next_task)
+        # print("next task is:")
+        # print(next_task)
 
-        ID = next_task["taskid"]
-        Path = next_task["Payload"]
+        # if next_task is None:
+        #     break
 
-        print("[" + worker_name + "] Processing task:[" + ID + "]" + Path + "==>" + dict_Data["sTargetDir"])
-        # Run the above function and store its results in a variable.
-        full_file_paths = get_filepaths(Path)  # List which will store all of the full filepaths.
-        for f in range(dict_Jobs[ID]["PauseIndex"], len(full_file_paths)):
-            #copy the actual file here
-            srcfile = full_file_paths[f]
-            head,tail = os.path.splitdrive(srcfile)
-            dstfile = os.path.normpath("d:/destination/" + ID + "/" + tail)
-            if not os.path.exists(os.path.dirname(dstfile)):
-                os.makedirs(os.path.dirname(dstfile))
+        ID = next_task["id"]
+        srcfile = next_task["file"]
+        #
+        print("[" + worker_name + "] Processing task:[" + ID + "]" + srcfile + "==>" + dict_Data["sTargetDir"])
+        # # Run the above function and store its results in a variable.
+        # #copy the actual file here
+        #
+        head,tail = os.path.splitdrive(srcfile)
+        dstfile = os.path.normpath("d:/destination/" + ID + "/" + tail)
+        if not os.path.exists(os.path.dirname(dstfile)):
+            os.makedirs(os.path.dirname(dstfile))
+        # if os.path.isfile(srcfile):
+        #     shutil.copy2(srcfile, dstfile)
+        #     #print(srcfile + " ==> " + (dstfile))
+        # else:
+        #     print(srcfile + " does not exist")
+        #print(srcfile + " ==> " + (dstfile))
+        # if dict_Jobs[ID]["active"] == False:
+        #     print("Aborting (setting task to inactive) paused at:" + dict_Jobs[ID]["PauseIndex"])
 
-            #shutil.copy2(srcfile, dstfile)
-            print(srcfile + " ==> " + (dstfile))
-            dProxy = dict_Jobs[ID]
-            dProxy["progress"] = f/(len(full_file_paths)-1)*100
-            dict_Jobs[ID] = dProxy
-
-            if dict_Jobs[ID]["active"] == False:
-                dProxy = dict_Jobs[ID]
-                dProxy["PauseIndex"] = f
-                dict_Jobs[ID] = dProxy
-                print("Aborting (setting task to inactive) paused at:" + dict_Jobs[ID]["PauseIndex"])
-                break
-            if dict_Jobs[ID]["progress"] == 100.0:
-                dProxy = dict_Jobs[ID]
-                dProxy["active"] = False
-                dict_Jobs[ID] = dProxy
-                print("Finished job")
-            time.sleep(0.01)
+        Data["progress_" + ID] += 1
+        #time.sleep(0.05)
 def get_filepaths(directory):
         """
         This function will generate the file names in a directory
@@ -72,8 +69,78 @@ def CreateTask(ID,Payload):
     Task["Payload"] = Payload
     Task["active"] = False
     Task["progress"] = 0
-    Task["PauseIndex"] = -1
+    Task["PauseIndex"] = 0
     return Task
+def LineCopyManager(task_queue,dict_Jobs,dict_Data, manager_name):
+    print("Line manager started:" + manager_name)
+
+    Manager = mp.Manager()
+    Data = Manager.dict()
+
+    worker_queue = Manager.Queue()
+    result_queue = Manager.Queue()
+
+    CopyWorkerPool = mp.Pool(processes=dict_Data["CopyWorkers_Per_Line"])
+    for i in range(dict_Data["CopyWorkers_Per_Line"]):
+        CopyWorkerPool.apply_async(CopyWorker, (dict_Jobs, dict_Data, "[" + manager_name + "] Copy Worker_" + str(i),worker_queue,result_queue,Data))
+    while True:
+
+        next_task = task_queue.get()
+        if next_task is None:
+             break
+        ID = next_task["taskid"]
+        Payload = next_task["Payload"]
+        Data["progress_" + ID] = 0
+        print("[" + manager_name + "] Processing task:[" + ID + "] ==>" + dict_Data["sTargetDir"])
+        # Run the above function and store its results in a variable.
+
+        files = []
+        for FileObj in Payload:
+            if FileObj["type"] == "folder":
+                aFilePaths = get_filepaths(FileObj["data"])
+                for f in aFilePaths:
+                    files.append(f)
+            elif FileObj["type"] == "file":
+                files.append(FileObj["data"])
+
+        # print("Starting from:" + str(dict_Jobs[ID]["PauseIndex"]))
+
+        for i in range(dict_Jobs[ID]["PauseIndex"], len(files)):
+            CopyQueueItem = {}
+            CopyQueueItem["file"] = files[i]
+            CopyQueueItem["id"] = ID
+            worker_queue.put(CopyQueueItem)
+
+        print("Current queue size:" + str(worker_queue.qsize()))
+        while True:
+            dProxy = dict_Jobs[ID]
+            if dProxy["active"] == False:
+                print("Pausing job;" + ID)
+                dProxy["PauseIndex"] = result_queue.qsize()
+                while not worker_queue.empty():
+                    worker_queue.get()
+                dict_Jobs[ID] = dProxy
+                break
+
+            dProxy["PauseIndex"] = result_queue.qsize()
+            dProxy["progress"] = (Data["progress_" + ID]/len(files))*100
+            dict_Jobs[ID] = dProxy
+            if worker_queue.qsize() == 0 or dProxy["progress"] == 100.0:
+                dProxy = dict_Jobs[ID]
+                dProxy["active"] = False
+                dict_Jobs[ID] = dProxy
+                while not result_queue.empty():
+                    result_queue.get()
+                break
+            time.sleep(0.25)
+
+        if worker_queue.qsize() == 0 or dProxy["progress"] == 100.0:
+            dProxy = dict_Jobs[ID]
+            dProxy["active"] = False
+            dProxy["progress"] = 100.0
+            dict_Jobs[ID] = dProxy
+            print("Finished job")
+
 def TCPServer(socket,task_queue, dict_Jobs):
     while True:
         client, address = socket.accept()
@@ -81,14 +148,12 @@ def TCPServer(socket,task_queue, dict_Jobs):
         data = client.recv(16348).decode('utf-8')
         data = json.loads(data)
         ID = uuid.uuid4()
-        Command = data["command"].lower()
+        Command = data["command"]
         Payload = data["payload"]
         if Command == "create_copytask":
-            for pl in Payload:
-                print("Creating task : " + str(ID))
-                dict_Jobs[str(ID)] = CreateTask(str(ID),pl)
-
-        client.send(bytes(str(ID) ,'utf-8'))
+            print("Creating task : " + str(ID))
+            dict_Jobs[str(ID)] = CreateTask(str(ID),Payload)
+            client.send(bytes(str(ID) ,'utf-8'))
         elif Command == "start_task":
             if Payload in dict_Jobs:
                 if dict_Jobs[Payload]["active"] == False:
@@ -97,6 +162,7 @@ def TCPServer(socket,task_queue, dict_Jobs):
                     dProxy["progress"] = 0
                     dict_Jobs[Payload] = dProxy
                     task_queue.put(dict_Jobs[Payload])
+
                 else:
                     client.send(bytes("Task already started",'utf-8'))
             else:
@@ -107,9 +173,7 @@ def TCPServer(socket,task_queue, dict_Jobs):
                     print("Resuming Job : " + str(Payload))
                     dProxy = dict_Jobs[Payload]
                     dProxy["active"] = True
-                    dProxy["started"] = True
                     dict_Jobs[Payload] = dProxy
-                    print(dict_Jobs[Payload])
                     task_queue.put(dict_Jobs[Payload])
                 else:
                     client.send(bytes("Cannot resume as it has not been paused",'utf-8'))
@@ -121,20 +185,20 @@ def TCPServer(socket,task_queue, dict_Jobs):
                     client.send(bytes(str(dict_Jobs[Payload]["progress"]),'utf-8'))
                 else:
                     if dict_Jobs[Payload]["progress"] == 100.0:
-                        print("Job complete")
+                        #print("Job complete")
                         client.send(bytes("Job Complete",'utf-8'))
                     else:
                         if dict_Jobs[Payload]["progress"] < 100.0 and dict_Jobs[Payload]["progress"] > 0:
-                            print("Job paused")
+                            #print("Job paused")
                             client.send(bytes("Job paused",'utf-8'))
                         else:
-                            print("Not started")
+                            #print("Not started")
                             client.send(bytes("Not Started",'utf-8'))
         elif Command == "get_tasks":
-            JobIDString = ""
-            for TaskID,JobObject in dict_Jobs.items():
-                JobIDString += (TaskID + "|")
-            client.send(bytes(JobIDString,'utf-8'))
+            aJobs = []
+            for key,value in dict_Jobs.items():
+                aJobs.append(key)
+            client.send(bytes(json.dumps({"job":aJobs}),'utf-8'))
         elif Command == "get_active_tasks":
             JobIDString = ""
             for TaskID,JobObject in dict_Jobs.items():
@@ -142,9 +206,12 @@ def TCPServer(socket,task_queue, dict_Jobs):
                     JobIDString += (TaskID + "|")
             client.send(bytes(JobIDString,'utf-8'))
         elif Command == "pause_job":
+
             dProxy = dict_Jobs[Payload]
             dProxy["active"] = False
             dict_Jobs[Payload] = dProxy
+            print("at the gate")
+            print(dict_Jobs[Payload]["active"])
             time.sleep(0.5)
             client.send(bytes('Paused job: ' + Payload,'utf-8'))
         elif Command == "remove_completed_tasks":
@@ -191,15 +258,21 @@ if __name__ == '__main__':
     Manager = mp.Manager()
 
     dict_WorkData = Manager.dict()
-    dict_WorkData['abort'] = -1
-    dict_WorkData["num_copyworkers"] = 5
+    dict_WorkData["Line_Managers"] = 2
+    dict_WorkData["CopyWorkers_Per_Line"] = 2
     dict_WorkData["sTargetDir"] = "d:/destination"
 
     dict_Jobs = Manager.dict()
     task_queue = Manager.Queue()
-    CopyWorkerPool = mp.Pool(processes=dict_WorkData["num_copyworkers"])
-    for i in range(dict_WorkData["num_copyworkers"]):
-        CopyWorkerPool.apply_async(CopyWorker, (task_queue, dict_Jobs, dict_WorkData, "copy_Worker_" + str(i)))
+
+    #LineCopyManagerPool = mp.Pool(processes=dict_WorkData["Line_Managers"])
+    #for i in range(dict_WorkData["Line_Managers"]):
+    #    LineCopyManagerPool.apply_async(LineCopyManager, (task_queue, dict_Jobs, dict_WorkData, "Line_manager_" + str(i)))
+    for i in range(dict_WorkData["Line_Managers"]):
+        LineManager = mp.Process(target=LineCopyManager, args=(task_queue, dict_Jobs, dict_WorkData, "Line_manager_" + str(i)))
+        LineManager.start()
+
+
     TCPWorker = mp.Process(target=TCPServer, args=(serversocket,task_queue, dict_Jobs))
     TCPWorker.start()
     TCPWorker.join()

@@ -37,12 +37,17 @@ def client(string):
         sock.close()
     #return reply
 
+def CreateData(Command,Payload):
+    data = {}
+    data["command"] = Command
+    data["payload"] = Payload
+    return json.dumps(data)
 def create_copytask():
 
     data = {}
-    JobList = ['c:/Data2','c:/Data2','c:/Data3','temp.dat','somefile.exe','file.bat']
+    JobList = ['c:/Data1']
     data["command"] = 'create_copytask'
-    data["payload"] = []
+    aPayload = []
 
 
     for pl in JobList:
@@ -54,36 +59,39 @@ def create_copytask():
             payload["type"] = "folder"
 
         payload["data"] = pl
-        data["payload"].append(payload)
+        aPayload.append(payload)
 
-    json_data = json.dumps(data)
-    client(json_data)
+    client(CreateData('create_copytask',aPayload))
 
 def start_task(slot):
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
+    dJobs = client(CreateData('get_tasks',0))
+
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        print(aJobs)
         if len(aJobs)>0:
-            if slot < len(aJobs)-1:
-                response = client("start_task|" + aJobs[slot])
+            if slot < len(aJobs):
+                response = client(CreateData('start_task',aJobs[slot]))
                 print(response)
         else:
             print("no jobs on server")
 
 def CheckStatus():
     jobs_lookup = {}
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        jobs = aJobs.split("|")
-        print("Number of active jobs:" + str(len(jobs)-1))
-        for job in jobs:
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        print("Number of active jobs:" + str(len(aJobs)-1))
+        for job in aJobs:
             if job != "":
                 jobs_lookup[job] = True
 
         while len(jobs_lookup)>0:
-            for job in jobs:
+            for job in aJobs:
                 if job in jobs_lookup:
-                    response = client("status|" + job)
+                    response = client(CreateData('status',job))
                     if response == "Job Complete":
                         del jobs_lookup[job]
                     time.sleep(0.5)
@@ -92,78 +100,112 @@ def CheckStatus():
     else:
         print("No active jobs on server")
 def pause(slot):
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
-        if slot < len(aJobs)-1:
-           client("pause_job|" + aJobs[slot])
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        if slot < len(aJobs):
+            client(CreateData('pause_job',aJobs[slot]))
 def resume(slot):
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
         if len(aJobs)>0:
-            if slot < len(aJobs)-1:
-                response = client("resume_job|" + aJobs[slot])
+            if slot < len(aJobs):
+
+                response = client(CreateData('resume_job',aJobs[slot]))
                 print(response)
         else:
             print("no jobs on server")
 
 def pausequeue():
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
-        if len(aJobs)>0:
-            for j in aJobs:
-                if j != "":
-                    client("pause_job|" + j)
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        for j in aJobs:
+            if j != "":
+                client(CreateData('pause_job',j))
 def resumequeue():
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
         if len(aJobs)>0:
             for j in aJobs:
                 if j != "":
-                    client("resume_job|" + j)
-
+                    client(CreateData('resume_job',j))
+def startqueue():
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        if len(aJobs)>0:
+            for j in aJobs:
+                if j != "":
+                    client(CreateData('start_task',j))
+                    #time.sleep(1)
 def removecompleted():
-    aJobs = client('get_tasks|0')
+    aJobs = client(CreateData('get_tasks',0))
     if aJobs != None:
         aJobs = aJobs.split("|")
         if len(aJobs)>0:
-            client("remove_completed_tasks|0")
+            client(CreateData('remove_completed_tasks',0))
     else:
         print("No tasks on server")
 def removeincompletetasks():
-    aJobs = client('get_tasks|0')
-    if aJobs != None:
-        aJobs = aJobs.split("|")
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
         if len(aJobs)>0:
-            client("remove_incomplete_tasks|0")
+            client(CreateData('remove_incomplete_tasks',0))
     else:
         print("No tasks on server")
-def modify(slot,Payload):
-    aJobs = client('get_tasks|0')
+def modify(slot):
+    aJobs = client(CreateData('get_tasks',0))
     if aJobs != None:
-        aJobs = aJobs.split("|")
+        aJobs = json.loads(aJobs)
         if len(aJobs)>0:
             if slot < len(aJobs)-1:
-                response = client("modify_task|" + aJobs[slot] + "@" + Payload)
+                aPayload = []
+                JobList = ['c:/Data1','c:/Data3']
+                for pl in JobList:
+                    payload = {}
+                    head, tail = os.path.split(pl)
+                    if len(tail.split(".")) > 1:
+                        payload["type"] = "file"
+                    else:
+                        payload["type"] = "folder"
+
+                    payload["data"] = pl
+                    aPayload.append(payload)
+
+                response = client(CreateData('modify_task',aPayload))
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    #®removecompleted()
+    removecompleted()
     create_copytask()
-    #start_task(0)
-    #start_task(1)
-    #start_task(2)
+    create_copytask()
+    create_copytask()
+    startqueue()
+    time.sleep(2)
+    # # start_task(0)
+    # start_task(1)
+    # start_task(2)
+    pausequeue()
+    # pause(0)
+    # pause(1)
+    # pause(2)
 
-    #pause(0)
-    #pause(1)git
+    time.sleep(2)
     #resume(0)
     #resume(1)
     #pausequeue()
-    #resumequeue()
-
-
+    resumequeue()
+    #aJobs = client(CreateData('get_tasks',0))
+    #print(aJobs)
     #removeincompletetasks()
-    #CheckStatus()
+    CheckStatus()
