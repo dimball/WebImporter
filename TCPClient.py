@@ -25,10 +25,6 @@ def client(string):
     if ready[0]:
         reply = sock.recv(16348)  # limit reply to 16K
         if len(reply)>0:
-            if (reply.decode('utf8')) != "Not started":
-                print("reply => " + (reply.decode('utf8')))
-            else:
-                print("reply => Job not started")
             return reply.decode('utf8')
     else:
         print("request timed out")
@@ -45,7 +41,7 @@ def CreateData(Command,Payload):
 def create_copytask():
 
     data = {}
-    JobList = ['c:/Data1']
+    JobList = ['c:/Data3']
     data["command"] = 'create_copytask'
     aPayload = []
 
@@ -92,8 +88,17 @@ def CheckStatus():
             for job in aJobs:
                 if job in jobs_lookup:
                     response = client(CreateData('status',job))
-                    if response == "Job Complete":
+                    response = json.loads(response)
+
+                    if response["status"] == "Job Complete":
+                        print(response["status"])
                         del jobs_lookup[job]
+                    else:
+                        if response["file"] != None:
+                            print("Task:" + str(response["status"]) + " : " + response["file"] + " : " + str(response["filestatus"]))
+                        else:
+                            print("Task:"+ str(response["status"]))
+
                     time.sleep(0.5)
 
         print("ended")
@@ -186,25 +191,26 @@ def modify(slot):
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    #removecompleted()
+    # removecompleted()
+    # time.sleep(2)
     create_copytask()
-    # create_copytask()
-    # create_copytask()
+    #create_copytask()
+    #create_copytask()
     startqueue()
-    time.sleep(2)
+    #time.sleep(2)
     # # start_task(0)
-    # start_task(1)
-    # start_task(2)
-    pausequeue()
+    #start_task(0)
+    #start_task(1)
+    #pausequeue()
     # pause(0)
     # pause(1)
     # pause(2)
 
-    time.sleep(2)
-    #resume(0)
+    # #time.sleep(2)
+    # #resume(0)
     #resume(1)
     #pausequeue()
-    resumequeue()
+    #resumequeue()
     #aJobs = client(CreateData('get_tasks',0))
     #print(aJobs)
     #removeincompletetasks()
