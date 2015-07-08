@@ -22,6 +22,7 @@ def CopyWorker(dict_Jobs, dict_Data, worker_name,worker_queue,result_queue,Data)
         # print(next_task)
 
         # if next_task is None:
+        #     # Poison pill. Shutdown the worker
         #     break
 
         ID = next_task["id"]
@@ -31,10 +32,10 @@ def CopyWorker(dict_Jobs, dict_Data, worker_name,worker_queue,result_queue,Data)
         # # Run the above function and store its results in a variable.
         # #copy the actual file here
         #
-        head,tail = os.path.splitdrive(srcfile)
-        dstfile = os.path.normpath("d:/destination/" + ID + "/" + tail)
-        if not os.path.exists(os.path.dirname(dstfile)):
-            os.makedirs(os.path.dirname(dstfile))
+        # head,tail = os.path.splitdrive(srcfile)
+        # dstfile = os.path.normpath("d:/destination/" + ID + "/" + tail)
+        # if not os.path.exists(os.path.dirname(dstfile)):
+        #     os.makedirs(os.path.dirname(dstfile))
         # if os.path.isfile(srcfile):
         #     shutil.copy2(srcfile, dstfile)
         #     #print(srcfile + " ==> " + (dstfile))
@@ -45,7 +46,9 @@ def CopyWorker(dict_Jobs, dict_Data, worker_name,worker_queue,result_queue,Data)
         #     print("Aborting (setting task to inactive) paused at:" + dict_Jobs[ID]["PauseIndex"])
 
         Data["progress_" + ID] += 1
-        #time.sleep(0.05)
+        if Data["active_" + ID] == False:
+            break
+        time.sleep(0.05)
 def get_filepaths(directory):
         """
         This function will generate the file names in a directory
@@ -80,9 +83,9 @@ def LineCopyManager(task_queue,dict_Jobs,dict_Data, manager_name):
     worker_queue = Manager.Queue()
     result_queue = Manager.Queue()
 
-    CopyWorkerPool = mp.Pool(processes=dict_Data["CopyWorkers_Per_Line"])
-    for i in range(dict_Data["CopyWorkers_Per_Line"]):
-        CopyWorkerPool.apply_async(CopyWorker, (dict_Jobs, dict_Data, "[" + manager_name + "] Copy Worker_" + str(i),worker_queue,result_queue,Data))
+    # CopyWorkerPool = mp.Pool(processes=dict_Data["CopyWorkers_Per_Line"])
+    # for i in range(dict_Data["CopyWorkers_Per_Line"]):
+    #     CopyWorkerPool.apply_async(CopyWorker, (dict_Jobs, dict_Data, "[" + manager_name + "] Copy Worker_" + str(i),worker_queue,result_queue,Data))
     while True:
 
         next_task = task_queue.get()
@@ -91,6 +94,7 @@ def LineCopyManager(task_queue,dict_Jobs,dict_Data, manager_name):
         ID = next_task["taskid"]
         Payload = next_task["Payload"]
         Data["progress_" + ID] = 0
+        Data["active" + ID] = True
         print("[" + manager_name + "] Processing task:[" + ID + "] ==>" + dict_Data["sTargetDir"])
         # Run the above function and store its results in a variable.
 
@@ -111,11 +115,16 @@ def LineCopyManager(task_queue,dict_Jobs,dict_Data, manager_name):
             CopyQueueItem["id"] = ID
             worker_queue.put(CopyQueueItem)
 
+        for i in range(dict_WorkData["CopyWorkers_Per_Line"]):
+            CopyWorkerProcess = mp.Process(target=CopyWorker, args=(dict_Jobs, dict_Data, "[" + manager_name + "] Copy Worker_" + str(i),worker_queue,result_queue,Data))
+            CopyWorkerProcess.start()
+
         print("Current queue size:" + str(worker_queue.qsize()))
         while True:
             dProxy = dict_Jobs[ID]
             if dProxy["active"] == False:
                 print("Pausing job;" + ID)
+                Data["active" + ID] = False
                 dProxy["PauseIndex"] = result_queue.qsize()
                 while not worker_queue.empty():
                     worker_queue.get()
