@@ -186,10 +186,10 @@ def modify(slot):
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    removecompleted()
+    #removecompleted()
     create_copytask()
-    create_copytask()
-    create_copytask()
+    # create_copytask()
+    # create_copytask()
     startqueue()
     time.sleep(2)
     # # start_task(0)
