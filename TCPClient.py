@@ -6,6 +6,15 @@ import time
 import select
 import json
 import os
+def recvall(sock):
+    data = ""
+    part = None
+    while part != "":
+        part = sock.recv(4096).decode('utf8')
+        print(part)
+        data += part
+    return data
+
 def client(string):
     HOST, PORT = 'localhost', 9090
     # SOCK_STREAM == a TCP socket
@@ -20,12 +29,13 @@ def client(string):
         print("")
 
 
-    sock.setblocking(0)
+    #sock.setblocking(0)
     ready = select.select([sock],[],[],2)
     if ready[0]:
-        reply = sock.recv(16348)  # limit reply to 16K
+
+        reply = recvall(sock)  # limit reply to 2mb
         if len(reply)>0:
-            return reply.decode('utf8')
+            return reply
     else:
         print("request timed out")
 
@@ -39,7 +49,6 @@ def CreateData(Command,Payload):
     data["payload"] = Payload
     return json.dumps(data)
 def create_copytask():
-
     data = {}
     JobList = ['c:/Data3']
     data["command"] = 'create_copytask'
@@ -58,6 +67,32 @@ def create_copytask():
         aPayload.append(payload)
 
     client(CreateData('create_copytask',aPayload))
+def modify_task(slot):
+    dJobs = client(CreateData('get_tasks',0))
+    JobList = ['c:/Data1']
+    aPayload = []
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        if len(aJobs)>0:
+            if slot < len(aJobs):
+                for pl in JobList:
+                    payload = {}
+                    head, tail = os.path.split(pl)
+                    if len(tail.split(".")) > 1:
+                        payload["type"] = "file"
+                    else:
+                        payload["type"] = "folder"
+                    payload["data"] = pl
+                    aPayload.append(payload)
+
+                data = {}
+                data["ID"] = aJobs[slot]
+                data["Payload"] = aPayload
+                response = client(CreateData('modify_task',data))
+                print(response)
+        else:
+            print("no jobs on server")
 
 def start_task(slot):
     dJobs = client(CreateData('get_tasks',0))
@@ -65,7 +100,6 @@ def start_task(slot):
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
-        print(aJobs)
         if len(aJobs)>0:
             if slot < len(aJobs):
                 response = client(CreateData('start_task',aJobs[slot]))
@@ -88,17 +122,22 @@ def CheckStatus():
             for job in aJobs:
                 if job in jobs_lookup:
                     response = client(CreateData('status',job))
+                    print(response)
                     response = json.loads(response)
 
                     if response["status"] == "Job Complete":
-                        print(response["status"])
-                        del jobs_lookup[job]
+                         del jobs_lookup[job]
                     else:
-                        if response["file"] != None:
-                            print("Task:" + str(response["status"]) + " : " + response["file"] + " : " + str(response["filestatus"]))
-                        else:
-                            print("Task:"+ str(response["status"]))
+                        print("Task:" + str(response["status"]))
+                        if "worker" in response:
+                            if len(response["worker"]) > 0:
 
+                                for worker,progress in response["worker"].items():
+                                    if len(progress) > 0:
+                                        print("\t\t" + worker)
+                                        for p in progress:
+                                            for file,progress in p.items():
+                                                print("\t\t\t\t" + worker + " : " + file + " : " + str(progress))
                     time.sleep(0.5)
 
         print("ended")
@@ -118,9 +157,7 @@ def resume(slot):
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             if slot < len(aJobs):
-
                 response = client(CreateData('resume_job',aJobs[slot]))
-                print(response)
         else:
             print("no jobs on server")
 
@@ -163,19 +200,21 @@ def removeincompletetasks():
     dJobs = client(CreateData('get_tasks',0))
     if dJobs != None:
         dJobs = json.loads(dJobs)
+        print(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             client(CreateData('remove_incomplete_tasks',0))
     else:
         print("No tasks on server")
 def modify(slot):
-    aJobs = client(CreateData('get_tasks',0))
-    if aJobs != None:
-        aJobs = json.loads(aJobs)
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        aJobs = json.loads(dJobs)
+        aJobs = aJobs["job"]
         if len(aJobs)>0:
-            if slot < len(aJobs)-1:
+            if slot < len(aJobs):
                 aPayload = []
-                JobList = ['c:/Data1','c:/Data3']
+                JobList = ['c:/Data3']
                 for pl in JobList:
                     payload = {}
                     head, tail = os.path.split(pl)
@@ -187,30 +226,39 @@ def modify(slot):
                     payload["data"] = pl
                     aPayload.append(payload)
 
-                response = client(CreateData('modify_task',aPayload))
+
+                data = {}
+                data["ID"] = aJobs[slot]
+                data["Payload"] = aPayload
+                response = client(CreateData('modify_task',data))
         else:
             print("no jobs on server")
 if __name__ == "__main__":
-    # removecompleted()
-    # time.sleep(2)
-    create_copytask()
-    #create_copytask()
-    #create_copytask()
-    startqueue()
-    #time.sleep(2)
-    # # start_task(0)
-    #start_task(0)
-    #start_task(1)
-    #pausequeue()
-    # pause(0)
-    # pause(1)
-    # pause(2)
 
-    # #time.sleep(2)
-    # #resume(0)
-    #resume(1)
-    #pausequeue()
-    #resumequeue()
+    #removeincompletetasks()
+    #removecompleted()
+    #time.sleep(2)
+
+#    removeincompletetasks()
+    #create_copytask()
+    modify(0)
+    #create_copytask()
+    # create_copytask()
+    startqueue()
+    # time.sleep(2)
+    # # # start_task(0)
+    # #start_task(0)
+    # #start_task(1)
+    # pausequeue()
+    # # pause(0)
+    # # pause(1)
+    # # pause(2)
+    #
+    # time.sleep(2)
+    # # #resume(0)
+    # #resume(1)
+    # #pausequeue()
+    # resumequeue()
     #aJobs = client(CreateData('get_tasks',0))
     #print(aJobs)
     #removeincompletetasks()
