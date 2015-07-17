@@ -50,7 +50,7 @@ def CreateData(Command,Payload):
     return json.dumps(data)
 def create_copytask():
     data = {}
-    JobList = ['c:/Data3']
+    JobList = ['c:/Data3','c:/Data1']
     data["command"] = 'create_copytask'
     aPayload = []
 
@@ -122,11 +122,12 @@ def CheckStatus():
             for job in aJobs:
                 if job in jobs_lookup:
                     response = client(CreateData('status',job))
-                    print(response)
+                    #print(response)
                     response = json.loads(response)
 
                     if response["status"] == "Job Complete":
                          del jobs_lookup[job]
+                         print("Job Complete")
                     else:
                         print("Task:" + str(response["status"]))
                         if "worker" in response:
@@ -138,7 +139,7 @@ def CheckStatus():
                                         for p in progress:
                                             for file,progress in p.items():
                                                 print("\t\t\t\t" + worker + " : " + file + " : " + str(progress))
-                    time.sleep(0.5)
+                        time.sleep(0.5)
 
         print("ended")
     else:
@@ -206,6 +207,17 @@ def removeincompletetasks():
             client(CreateData('remove_incomplete_tasks',0))
     else:
         print("No tasks on server")
+def restart_tasks():
+    dJobs = client(CreateData('get_tasks',0))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        if len(aJobs)>0:
+            for j in aJobs:
+                if j != "":
+                    client(CreateData('restart_task',j))
+                    #time.sleep(1)
+
 def modify(slot):
     dJobs = client(CreateData('get_tasks',0))
     if dJobs != None:
@@ -214,7 +226,7 @@ def modify(slot):
         if len(aJobs)>0:
             if slot < len(aJobs):
                 aPayload = []
-                JobList = ['c:/Data3']
+                JobList = ['c:/Data1']
                 for pl in JobList:
                     payload = {}
                     head, tail = os.path.split(pl)
@@ -236,20 +248,22 @@ def modify(slot):
 if __name__ == "__main__":
 
     #removeincompletetasks()
-    #removecompleted()
-    #time.sleep(2)
+#     removecompleted()
+#     time.sleep(0.1)
+#
+# #    removeincompletetasks()
+#     create_copytask()
 
-#    removeincompletetasks()
-    #create_copytask()
-    modify(0)
     #create_copytask()
     # create_copytask()
-    startqueue()
+    #time.sleep(2)
+    #modify(0)
+    #startqueue()
     # time.sleep(2)
     # # # start_task(0)
     # #start_task(0)
     # #start_task(1)
-    # pausequeue()
+    #pausequeue()
     # # pause(0)
     # # pause(1)
     # # pause(2)
@@ -257,8 +271,10 @@ if __name__ == "__main__":
     # time.sleep(2)
     # # #resume(0)
     # #resume(1)
-    # #pausequeue()
-    # resumequeue()
+    #pausequeue()
+
+    #resumequeue()
+    restart_tasks()
     #aJobs = client(CreateData('get_tasks',0))
     #print(aJobs)
     #removeincompletetasks()
