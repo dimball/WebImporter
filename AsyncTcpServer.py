@@ -27,12 +27,11 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Data["payload"]= Payload
         self.Output["status"] = ID
         Tasks.Jobs[ID].state = "busy"
+        Tasks.Jobs[ID].progress = -1
         Tasks.Jobs[ID].filelist = self.FileExpand(ID,Payload)
         logging.debug("Number of tasks:%s", len(Tasks.Jobs[ID].filelist))
         Tasks.Jobs[ID].state = "ready"
         self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
-
-
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
@@ -60,10 +59,11 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
     def m_status(self):
         if self.Payload in Tasks.Jobs:
             if Tasks.Jobs[self.Payload].active:
+                print(Tasks.Jobs[self.Payload].progress)
                 if Tasks.Jobs[self.Payload].progress == -1:
                     self.Output["status"] = "Not Started"
                     self.Output["worker"] = {}
-                elif Tasks.Jobs[self.Payload].progress < 100.0:
+                elif Tasks.Jobs[self.Payload].progress < 100.0 and Tasks.Jobs[self.Payload].progress > -1:
                     self.Output["status"] = Tasks.Jobs[self.Payload].progress
                     self.Output["worker"] = {}
                     for worker,file in Tasks.Jobs[self.Payload].workerlist.items():
@@ -93,13 +93,10 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                     else:
                         self.Output["status"] = "In queue"
                         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
-
-
     def m_remove_completed_tasks(self):
         self.aList = []
         for ID,job in Tasks.Jobs.items():
             self.aList.append(ID)
-
         for ID in self.aList:
             if Tasks.Jobs[ID].IsComplete():
                 self.fullpath = Tasks.WorkData["sTargetDir"] + ID
@@ -111,7 +108,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                     logging.debug("%s is not a folder",self.fullpath)
             else:
                 logging.debug("Job is not complete yet:%s",ID)
-
     def m_remove_incomplete_tasks(self):
         self.aList = []
         for ID,job in Tasks.Jobs.items():
@@ -131,7 +127,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         Tasks.Jobs[ID].active = False
         self.Output["status"] = "Paused job " + ID
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
-
         self.WriteJob(Tasks.WorkData,Tasks.Jobs,ID)
     def m_restart_task(self,ID):
         if ID in Tasks.Jobs:
@@ -164,13 +159,11 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         #print("Setting up request")
         self.Data = {}
         self.Output = {}
-
     def handle(self):
         #print("handling request")
         self.buffersize = 1024*1024*5
         self.data = self.request.recv(self.buffersize).decode('utf-8')
         self.data = json.loads(self.data)
-
         self.Command = self.data["command"]
         self.Payload = self.data["payload"]
         self.Output = {}
@@ -229,11 +222,9 @@ class server(hfn.c_HelperFunctions):
         self.dict_WorkData["Num_TCP_port"] = int(self.config.find("numtcpport").text)
         self.dict_WorkData["large_file_threshold"] = int(self.config.find("largefilethreshold").text)
         return self.dict_WorkData
-
     def m_ReadJobList(self):
         logging.debug("Init TCP server: Reading existing jobs from %s", Tasks.WorkData["sTargetDir"])
         self.aFiles = self.get_filepaths(Tasks.WorkData["sTargetDir"])
-
         for f in self.aFiles:
             self.head,self.tail = os.path.split(f)
             self.head, self.tail = (os.path.splitext(self.tail))
@@ -260,8 +251,6 @@ class server(hfn.c_HelperFunctions):
 
                 Tasks.Jobs[self.root.attrib["ID"]].active = self.bIsActive
                 Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
-
-
         for f in Tasks.Jobs:
             self.aIncompleteFiles = 0
             for file in Tasks.Jobs[f].filelist:
@@ -270,22 +259,12 @@ class server(hfn.c_HelperFunctions):
             logging.debug("Loading task:[%s] %s : %s files. %s Incomplete", Tasks.Jobs[f].active, f, len(Tasks.Jobs[f].filelist), self.aIncompleteFiles)
 
     def run(self):
-
-
-        #read in the config data here
-
-
-
-
-
         # Port 0 means to select an arbitrary unused port
         HOST, PORT = "localhost", 9090
         server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
         ip, port = server.server_address
-
         # Start a thread with the server -- that thread will then start one
         # more thread for each request
-
         server_thread = threading.Thread(target=server.serve_forever)
         # Exit the server thread when the main thread terminates
         server_thread.daemon = True
@@ -295,9 +274,9 @@ class server(hfn.c_HelperFunctions):
             self.LineManager.start()
             self.aLineManagers.append(self.LineManager)
 
-        print("Server loop running in thread:", server_thread.name)
+        logging.debug("Server loop running in thread:%s", server_thread.name)
         while Tasks.shutdown == False:
-            test = "test"
+            message = "waiting_until_shutdown_command"
 
         for p in self.aLineManagers:
             Tasks.task_queue.put(None)
