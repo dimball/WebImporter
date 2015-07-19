@@ -1,10 +1,10 @@
+import queue
 class c_file():
-    def __init__(self,size):
+    def __init__(self):
         self.progress = 0
         self.copied = False
         self.delete = False
         self.uploaded = False
-        self.size = size
 class c_Task():
     def __init__(self,ID):
         self.TaskID = str(ID)
@@ -33,3 +33,11 @@ class c_Task():
             self.filelist[f].uploaded = False
 
         self.GetCurrentProgress()
+
+class c_data():
+    def __init__(self):
+        self.lock = False
+        self.Jobs = {}
+        self.task_queue = queue.Queue()
+        self.WorkData = {}
+        self.shutdown = False

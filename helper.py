@@ -7,6 +7,11 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 class c_HelperFunctions():
+    def StringToBool(self,input):
+        if input == "True":
+            return True
+        else:
+            return False
     def remove_readonly(self,fn, path, excinfo):
         try:
             os.chmod(path, stat.S_IWRITE)
@@ -41,7 +46,6 @@ class c_HelperFunctions():
             fileItem.set("copied",str(data.copied))
             fileItem.set("delete",str(data.delete))
             fileItem.set("uploaded",str(data.uploaded))
-            fileItem.set("size",str(data.size))
         self.indent(Task)
         Tree = ET.ElementTree(Task)
         Tree.write(dict_workdata["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml", xml_declaration=True, encoding='utf-8', method="xml")
@@ -71,9 +75,10 @@ class c_HelperFunctions():
                 self.aFilePaths = self.get_filepaths(FileObj["data"])
                 for f in self.aFilePaths:
                     self.path = os.path.normpath(f)
-                    self.FileList[self.path] = dataclasses.c_file(os.path.getsize(self.path))
+
+                    self.FileList[self.path] = dataclasses.c_file()
             elif FileObj["type"] == "file":
                 self.path = os.path.normpath(FileObj["data"])
-                self.FileList[self.path] = dataclasses.c_file(os.path.getsize(self.path))
+                self.FileList[self.path] = dataclasses.c_file()
 
         return self.FileList

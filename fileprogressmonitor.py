@@ -14,10 +14,6 @@ class c_FileProgressMonitor(threading.Thread):
         self.srcfile = srcfile
         self.tgtfile = tgtfile
         self.size = os.path.getsize(self.srcfile)
-        if self.dict_Jobs[self.ID].filelist[self.srcfile].size != self.size:
-            logging.debug("Original size is different from current size. Updating entry")
-            self.dict_Jobs[self.ID].filelist[self.srcfile].size = self.size
-
         self.name = "Progress monitor"
 
         #if self.worker_name in self.dict_Jobs[self.ID].workerlist == False:

@@ -100,11 +100,11 @@ class c_CopyWorker(threading.Thread):
         logging.debug("Shutting down copy worker")
         return
 class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
-    def __init__(self,task_queue,dict_Jobs,dict_Data, manager_name):
+    def __init__(self,Tasks, manager_name):
         threading.Thread.__init__(self)
-        self.task_queue = task_queue
-        self.dict_Jobs = dict_Jobs
-        self.dict_Data = dict_Data
+        self.task_queue = Tasks.task_queue
+        self.dict_Jobs = Tasks.Jobs
+        self.dict_Data = Tasks.WorkData
         self.manager_name = manager_name
         self.name = self.manager_name
         self.worker_queue = queue.Queue()
@@ -139,7 +139,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                 self.numLargeFiles = 0
                 self.numSmallFiles = 0
                 for file in self.next_task.filelist:
-                    if (self.next_task.filelist[file].size > self.dict_Data["large_file_threshold"]*1024*1024):
+                    if (os.path.getsize(file) > self.dict_Data["large_file_threshold"]*1024*1024):
                         self.numLargeFiles += 1
                     else:
                         self.numSmallFiles += 1

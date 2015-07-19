@@ -16,6 +16,7 @@ import workers
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
+import threading
 class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
     def __init__(self,Data):
         threading.Thread.__init__(self)
@@ -24,7 +25,7 @@ class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
         self.dict_Jobs = self.Data["dict_Jobs"]
         self.ID = self.Data["ID"]
         self.command = self.Data["command"]
-
+        print("Running command:%s", self.command)
     def m_expand_files(self):
         self.payload = self.Data["payload"]
         self.dict_Jobs[self.ID].state = "busy"
@@ -48,15 +49,14 @@ class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
     def m_remove_task(self):
         self.task_queue = self.Data["task_queue"]
         if self.ID in self.dict_Jobs:
-            if self.dict_Jobs[self.ID].active == False:
-                self.fullpath = self.dict_Data["sTargetDir"] + self.ID
-                if os.path.isdir(self.fullpath):
-                    shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
-                else:
-                    logging.debug("%s is not a folder",self.fullpath)
+            self.fullpath = self.dict_Data["sTargetDir"] + self.ID
+            if os.path.isdir(self.fullpath):
+                shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
+                logging.debug("Removing completed Job:%s",self.ID)
+            else:
+                logging.debug("%s is not a folder",self.fullpath)
 
-                del self.dict_Jobs[self.ID]
-
+        del self.dict_Jobs[self.ID]
     def m_modify_task(self):
         self.incomingFiles = self.FileExpand(self.ID, self.Payload)
         self.aDeleteList = []
@@ -106,6 +106,7 @@ class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
         elif self.command == "modify_task":
             self.m_modify_task()
         elif self.command == "remove_task":
+
             self.m_remove_task()
 class TCPServer(hfn.c_HelperFunctions):
     def __init__(self):
@@ -311,6 +312,7 @@ class TCPServer(hfn.c_HelperFunctions):
         self.WriteJob(self.dict_WorkData,self.dict_Jobs,self.Payload)
     def m_remove_completed_tasks(self):
         self.DeleteList = []
+        self.workers = []
         for pl,job in self.dict_Jobs.items():
             if self.dict_Jobs[pl].progress == 100.0:
                 self.DeleteList.append(pl)
@@ -319,13 +321,12 @@ class TCPServer(hfn.c_HelperFunctions):
                 self.Data["task_queue"] = self.task_queue
                 self.RemoveWorker = c_PreTaskWorker(self.Data)
                 self.RemoveWorker.start()
-                logging.debug("Removing completed Job:%s",pl)
-                self.RemoveWorker.join()
+                self.threads.append(self.RemoveWorker)
             else:
                 logging.debug("Job is not complete yet:%s",pl)
 
-        for ID in self.DeleteList:
-            del self.dict_Jobs[ID]
+
+
     def m_remove_incomplete_tasks(self):
         self.DeleteList = []
         for pl,job in self.dict_Jobs.items():
@@ -363,6 +364,8 @@ class TCPServer(hfn.c_HelperFunctions):
 
 
     def run(self):
+        #this can only process one tcp request at a time. so if a request is taking long to process, then
+        #the server will be unresponsive until it is done with previous request.
         while True:
             self.client, self.address = self.socket.accept()
             #logger.debug("{u} connected".format(u=address))
@@ -399,7 +402,10 @@ class TCPServer(hfn.c_HelperFunctions):
                 for p in self.aLineManagers:
                     self.task_queue.put(None)
                 time.sleep(1)
+                for p in self.workers:
+                    p.join()
                 for p in self.aLineManagers:
                     p.join()
                 break
+
             self.client.close()
