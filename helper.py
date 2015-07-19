@@ -49,7 +49,15 @@ class c_HelperFunctions():
         self.indent(Task)
         Tree = ET.ElementTree(Task)
         Tree.write(dict_workdata["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml", xml_declaration=True, encoding='utf-8', method="xml")
-    def get_filepaths(self,directory):
+    def get_xmljobs(self,Tasks):
+        self.xmljobs = []
+        for ID in os.listdir(Tasks.WorkData["sTargetDir"]):
+            self.xmljob = (Tasks.WorkData["sTargetDir"] + "/" +ID + "/" + ID + ".xml")
+            if os.path.exists(self.xmljob):
+                self.xmljobs.append(self.xmljob)
+        return self.xmljobs
+
+    def get_filepaths(self,directory,pattern="*.*"):
         """
         This function will generate the file names in a directory
         tree by walking the tree either top-down or bottom-up. For each
@@ -61,9 +69,22 @@ class c_HelperFunctions():
         # Walk the tree.
         for root, directories, files in os.walk(directory):
             for filename in files:
+                self.bAdd = None
+                if pattern != "*.*":
+                    self.head,self.tail = os.path.split(filename)
+                    self.head, self.tail = (os.path.splitext(self.tail))
+                    if ("." + pattern.split(".")[1]) == self.tail:
+                        self.bAdd = True
+                    else:
+                        self.bAdd = False
+                else:
+                    self.bAdd = True
+
+
                 # Join the two strings in order to form the full filepath.
                 filepath = os.path.join(root, filename)
-                file_paths.append(filepath)  # Add it to the list.
+                if self.bAdd == True:
+                    file_paths.append(filepath)  # Add it to the list.
 
         return file_paths  # Self-explanatory.
     def FileExpand(self,ID,Payload):

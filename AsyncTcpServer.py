@@ -128,33 +128,57 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Output["status"] = "Paused job " + ID
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         self.WriteJob(Tasks.WorkData,Tasks.Jobs,ID)
+
     def m_restart_task(self,ID):
+        self.Output["status"] = "test"
+        self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
-                    if Tasks.Jobs[ID].IsComplete() == True:
-                        self.Output["status"] = "Task is being prepared for restart"
-                        self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
-                        Tasks.Jobs[ID].active = True
-                        Tasks.Jobs[ID].workerlist = {}
-                        Tasks.Jobs[ID].ResetFileStatus()
-                        Tasks.Jobs[ID].progress = -1
-                        for folder in os.listdir(Tasks.WorkData["sTargetDir"]+ ID):
-                            self.fullpath = Tasks.WorkData["sTargetDir"] + ID + "/" + folder + "/"
-                            if os.path.isdir(self.fullpath):
-                                shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
-                            else:
-                                logging.debug("%s is not a folder",self.fullpath)
-                        Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                        logging.debug("Task is being restarted: %s", ID)
-                        Tasks.task_queue.put(Tasks.Jobs[ID])
-                        self.Output["status"] = "Restarting task> " + ID
-                        self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
+
+                if Tasks.Jobs[ID].IsComplete() == True:
+                    print("Restarting")
+                    Tasks.Jobs[ID].active = True
+                    Tasks.Jobs[ID].workerlist = {}
+                    Tasks.Jobs[ID].ResetFileStatus()
+                    Tasks.Jobs[ID].progress = -1
+                    for folder in os.listdir(Tasks.WorkData["sTargetDir"] + ID):
+                        self.fullpath = Tasks.WorkData["sTargetDir"] + ID + "/" + folder + "/"
+                        if os.path.isdir(self.fullpath):
+                            print("removing")
+                            #shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
+                        else:
+                            logging.debug("%s is not a folder",self.fullpath)
+                    Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
+                    #     logging.debug("Task is being restarted: %s", ID)
+                    #     Tasks.task_queue.put(Tasks.Jobs[ID])
+
             else:
                 self.Output["status"] = "Task is busy. Try again when it is ready"
                 self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         else:
             self.Output["status"] = "Task does not exist"
             self.request.sendall(bytes(self.Output,'utf-8'))
+    def m_setpriority(self,Payload):
+        #stop the queue
+        #dequeue
+        #put the jobs back into the queue in the right order
+
+        self.aActiveList = []
+        for ID in Tasks.Jobs.items():
+            if Tasks.Jobs[ID].active == True:
+                self.aActiveList.append(ID)
+                Tasks.Jobs[ID].active = False
+
+        while not Tasks.task_queue.empty():
+            Tasks.task_queue.get()
+
+        for ID in Payload:
+            for Active in self.aActiveList:
+                if ID == Active:
+                    Tasks.Jobs[ID].active = True
+
+            Tasks.task_queue.put(Tasks.Jobs[ID])
+
     def setup(self):
         #print("Setting up request")
         self.Data = {}
@@ -193,6 +217,9 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.m_remove_incomplete_tasks()
         # elif self.Command == "modify_task":
         #     self.m_modify_task()
+        elif self.Command == "set_priority":
+            self.m_setpriority(self.Payload)
+
         elif self.Command == "shutdown_server":
             logging.debug("Shutting down server")
             Tasks.shutdown = True
@@ -224,33 +251,28 @@ class server(hfn.c_HelperFunctions):
         return self.dict_WorkData
     def m_ReadJobList(self):
         logging.debug("Init TCP server: Reading existing jobs from %s", Tasks.WorkData["sTargetDir"])
-        self.aFiles = self.get_filepaths(Tasks.WorkData["sTargetDir"])
+        self.aFiles = self.get_xmljobs(Tasks)
+
+        self.filecounter = 0
         for f in self.aFiles:
-            self.head,self.tail = os.path.split(f)
-            self.head, self.tail = (os.path.splitext(self.tail))
-            if self.tail.lower() == ".xml":
-                self.tree = ET.ElementTree(file=f)
-                self.root = self.tree.getroot()
-                Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
-                Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
-                Tasks.Jobs[self.root.attrib["ID"]].active = self.root.attrib["active"]
+            self.tree = ET.ElementTree(file=f)
+            self.root = self.tree.getroot()
+            Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
+            Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
+            Tasks.Jobs[self.root.attrib["ID"]].active = self.root.attrib["active"]
+            self.bIsActive = True
+            self.CopiedFiles = 0
+            for file in self.root.find("FileList").findall("File"):
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file()
 
-                self.bIsActive = True
-                self.CopiedFiles = 0
-                for file in self.root.find("FileList").findall("File"):
-                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file()
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].copied = self.StringToBool(file.attrib["copied"])
+                if file.attrib["copied"] == True:
+                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 100.0
+                    self.CopiedFiles += 1
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
 
-                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].copied = self.StringToBool(file.attrib["copied"])
-                    if file.attrib["copied"] == False:
-                        self.bIsActive = False
-                    else:
-                        Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 100.0
-                        self.CopiedFiles += 1
-                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
-                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
-
-                Tasks.Jobs[self.root.attrib["ID"]].active = self.bIsActive
-                Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
+            Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
         for f in Tasks.Jobs:
             self.aIncompleteFiles = 0
             for file in Tasks.Jobs[f].filelist:

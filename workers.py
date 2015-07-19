@@ -9,6 +9,97 @@ import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
+class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
+    def __init__(self,Data):
+        threading.Thread.__init__(self)
+        self.Data = Data
+        self.dict_Data = self.Data.WorkData
+        self.dict_Jobs = self.Data.Jobs
+        self.ID = self.Data["ID"]
+        self.command = self.Data["command"]
+        print("Running command:%s", self.command)
+    def m_expand_files(self):
+        self.payload = self.Data["payload"]
+        self.dict_Jobs[self.ID].state = "busy"
+        self.dict_Jobs[self.ID].filelist = self.FileExpand(self.ID,self.payload)
+        self.dict_Jobs[self.ID].state = "ready"
+    def m_restart_task(self):
+        self.task_queue = self.Data["task_queue"]
+        if self.ID in self.dict_Jobs:
+            self.dict_Jobs[self.ID].active = True
+            self.dict_Jobs[self.ID].workerlist = {}
+            self.dict_Jobs[self.ID].ResetFileStatus()
+            self.dict_Jobs[self.ID].progress = -1
+            for folder in os.listdir(self.dict_Data["sTargetDir"]+ self.ID):
+                self.fullpath = self.dict_Data["sTargetDir"] + self.ID + "/" + folder + "/"
+                if os.path.isdir(self.fullpath):
+                    shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
+                else:
+                    logging.debug("%s is not a folder",self.fullpath)
+            self.dict_Jobs[self.ID].progress = self.dict_Jobs[self.ID].GetCurrentProgress()
+            self.task_queue.put(self.dict_Jobs[self.ID])
+    def m_remove_task(self):
+        self.task_queue = self.Data["task_queue"]
+        if self.ID in self.dict_Jobs:
+            self.fullpath = self.dict_Data["sTargetDir"] + self.ID
+            if os.path.isdir(self.fullpath):
+                shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
+                logging.debug("Removing completed Job:%s",self.ID)
+            else:
+                logging.debug("%s is not a folder",self.fullpath)
+
+        del self.dict_Jobs[self.ID]
+    def m_modify_task(self):
+        self.incomingFiles = self.FileExpand(self.ID, self.Payload)
+        self.aDeleteList = []
+        self.dict_Data[self.ID].state = "busy"
+        if len(self.dict_Data[self.ID].filelist) < len(self.incomingFiles):
+            #if there is less files in the current list then iterate over the current list against the incoming files. If file in current list
+            #exist in incoming files, then keep file. If file in current list does not exist in incoming list, then mark for deletion.
+
+            for file,state in self.dict_Data[self.ID].filelist:
+                if file in self.incomingFiles == False:
+                    self.aDeleteList.append(file)
+                else:
+                    self.incomingFiles[file] = self.dict_Data[self.ID].filelist[file]
+            #delete files
+
+            for delfile in self.aDeleteList:
+                os.remove(delfile)
+                #also remove folder if the folder is empty.
+
+            self.dict_Data[self.ID].filelist = self.incomingFiles
+        else:
+            #if there are more files in the current list than in the incoming list, then iterate over the incoming list. If the file in the incoming list
+            #exists in the current list AND the file in the current list has been marked as copied, then keep the file. If it does not exists
+
+            for file,state in self.incomingFiles:
+                self.dict_Data[self.ID].filelist[file].delete = True
+                if file in self.incomingFiles == True and state["copied"] == True:
+                    self.dict_Data[self.ID].filelist[file].delete = False
+                    self.incomingFiles[file] = self.dict_Data[self.ID].filelist[file]
+
+            for file, state in self.dict_Data[self.ID].filelist:
+                if state["delete"] == True:
+                    os.remove(file)
+
+            self.dict_Data[self.ID].filelist = self.incomingFiles
+
+        self.dict_Data[self.ID].state = "ready"
+        if os.path.exists(self.dict_Data["sTargetDir"] + self.ID):
+            self.dict_Data[self.ID].state = "busy"
+            shutil.rmtree(self.dict_Data["sTargetDir"] + self.ID)
+            self.dict_Data[self.ID].state = "ready"
+    def run(self):
+        if self.command == "restart_task":
+            self.m_restart_task()
+        elif self.command == "expand_files":
+            self.m_expand_files()
+        elif self.command == "modify_task":
+            self.m_modify_task()
+        elif self.command == "remove_task":
+
+            self.m_remove_task()
 class c_CopyWorker(threading.Thread):
     def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand):
         threading.Thread.__init__(self)
@@ -116,119 +207,119 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
             self.next_task = self.task_queue.get()
             if self.next_task is None:
                 break
+            if self.next_task.active == True:
+                self.ID = self.next_task.TaskID
+                logging.debug("[%s] Processing task:[%s] ==> %s",self.manager_name,self.ID,self.dict_Data["sTargetDir"])
+                self.files = []
 
-            self.ID = self.next_task.TaskID
-            logging.debug("[%s] Processing task:[%s] ==> %s",self.manager_name,self.ID,self.dict_Data["sTargetDir"])
-            self.files = []
-
-            for file in self.next_task.filelist:
-                if self.next_task.filelist[file].copied == False:
-                    self.files.append(file)
-                    self.CopyQueueItem = {}
-                    self.CopyQueueItem["file"] = file
-                    self.head,self.tail = os.path.splitdrive(file)
-                    self.dstfile = os.path.normpath(self.dict_Data["sTargetDir"] + self.ID + "/" + self.tail)
-                    if not os.path.exists(os.path.dirname(self.dstfile)):
-                        os.makedirs(os.path.dirname(self.dstfile))
-                    self.CopyQueueItem["id"] = self.ID
-                    self.worker_queue.put(self.CopyQueueItem)
-                    self.large_worker_queue.put(self.CopyQueueItem)
-
-            if len(self.files) > 0:
-
-                self.numLargeFiles = 0
-                self.numSmallFiles = 0
                 for file in self.next_task.filelist:
-                    if (os.path.getsize(file) > self.dict_Data["large_file_threshold"]*1024*1024):
-                        self.numLargeFiles += 1
-                    else:
-                        self.numSmallFiles += 1
+                    if self.next_task.filelist[file].copied == False:
+                        self.files.append(file)
+                        self.CopyQueueItem = {}
+                        self.CopyQueueItem["file"] = file
+                        self.head,self.tail = os.path.splitdrive(file)
+                        self.dstfile = os.path.normpath(self.dict_Data["sTargetDir"] + self.ID + "/" + self.tail)
+                        if not os.path.exists(os.path.dirname(self.dstfile)):
+                            os.makedirs(os.path.dirname(self.dstfile))
+                        self.CopyQueueItem["id"] = self.ID
+                        self.worker_queue.put(self.CopyQueueItem)
+                        self.large_worker_queue.put(self.CopyQueueItem)
 
-                self.aCopyWorkers = []
+                if len(self.files) > 0:
 
-                if self.numLargeFiles > 0:
-                    #dynamically adjust number of copy workers depending on the average size of files?
-                    self.CopyWorkerName = "[" + self.manager_name + "] Large_Copy Worker"
-                    self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
-                    self.LargeCopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.large_worker_queue,self.result_queue, ">")
-                    self.LargeCopyWorkerProcess.start()
+                    self.numLargeFiles = 0
+                    self.numSmallFiles = 0
+                    for file in self.next_task.filelist:
+                        if (os.path.getsize(file) > self.dict_Data["large_file_threshold"]*1024*1024):
+                            self.numLargeFiles += 1
+                        else:
+                            self.numSmallFiles += 1
 
-                #copy workers that work on files less than 5mb
-                if self.numSmallFiles > 0:
-                    self.NumSmallCopyWorkers = self.dict_Data["CopyWorkers_Per_Line"]
-                    if self.numSmallFiles < self.NumSmallCopyWorkers:
-                        self.NumSmallCopyWorkers = self.numSmallFiles
+                    self.aCopyWorkers = []
 
-                    for i in range(self.NumSmallCopyWorkers):
-                        self.CopyWorkerName = "[" + self.manager_name + "] Copy Worker_" + str(i)
+                    if self.numLargeFiles > 0:
+                        #dynamically adjust number of copy workers depending on the average size of files?
+                        self.CopyWorkerName = "[" + self.manager_name + "] Large_Copy Worker"
                         self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
-                        self.CopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.worker_queue,self.result_queue, "<")
-                        self.CopyWorkerProcess.start()
-                        self.aCopyWorkers.append(self.CopyWorkerProcess)
+                        self.LargeCopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.large_worker_queue,self.result_queue, ">")
+                        self.LargeCopyWorkerProcess.start()
+
+                    #copy workers that work on files less than 5mb
+                    if self.numSmallFiles > 0:
+                        self.NumSmallCopyWorkers = self.dict_Data["CopyWorkers_Per_Line"]
+                        if self.numSmallFiles < self.NumSmallCopyWorkers:
+                            self.NumSmallCopyWorkers = self.numSmallFiles
+
+                        for i in range(self.NumSmallCopyWorkers):
+                            self.CopyWorkerName = "[" + self.manager_name + "] Copy Worker_" + str(i)
+                            self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
+                            self.CopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.worker_queue,self.result_queue, "<")
+                            self.CopyWorkerProcess.start()
+                            self.aCopyWorkers.append(self.CopyWorkerProcess)
 
 
 
 
 
-                self.OldQueueSize = 0
-                while True:
-                    self.CurrentQueueSize = self.result_queue.qsize()
-                    #print(self.CurrentQueueSize)
-                    if self.dict_Jobs[self.ID].active == False:
-                        logging.debug("Pausing job:%s ",self.ID)
-                        #self.dict_Jobs[self.ID].PauseIndex = self.CurrentQueueSize
-                        while not self.worker_queue.empty():
-                            self.worker_queue.get()
-                        while not self.large_worker_queue.empty():
-                            self.worker_queue.get()
+                    self.OldQueueSize = 0
+                    while True:
+                        self.CurrentQueueSize = self.result_queue.qsize()
+                        #print(self.CurrentQueueSize)
+                        if self.dict_Jobs[self.ID].active == False:
+                            logging.debug("Pausing job:%s ",self.ID)
+                            #self.dict_Jobs[self.ID].PauseIndex = self.CurrentQueueSize
+                            while not self.worker_queue.empty():
+                                self.worker_queue.get()
+                            while not self.large_worker_queue.empty():
+                                self.worker_queue.get()
+                            while not self.result_queue.empty():
+                                self.result_queue.get()
+                            for p in self.aCopyWorkers:
+                                p.join()
+
+                            if self.numLargeFiles > 0:
+                                self.LargeCopyWorkerProcess.join()
+
+                            self.task_queue.task_done()
+
+                            break
+
+                        self.dict_Jobs[self.ID].progress = (self.CurrentQueueSize/len(self.files))*100
+                        if self.CurrentQueueSize > self.OldQueueSize:
+                            self.OldQueueSize = self.CurrentQueueSize
+                            #write out data each time a file has been processed
+                            self.WriteJob(self.dict_Data,self.dict_Jobs,self.ID)
+
+
+                        if self.dict_Jobs[self.ID].progress >= 100.0:
+                            self.dict_Jobs[self.ID].progress = 100.0
+                            self.dict_Jobs[self.ID].active = False
+
+                            while not self.result_queue.empty():
+                                self.result_queue.get()
+                            break
+
+
+                    if self.dict_Jobs[self.ID].progress >= 100.0:
+                        self.dict_Jobs[self.ID].active = False
+                        self.dict_Jobs[self.ID].progress = 100.0
+
                         while not self.result_queue.empty():
                             self.result_queue.get()
+
+                        for p in self.aCopyWorkers:
+                            self.worker_queue.put(None)
+
+                        self.large_worker_queue.put(None)
+                        time.sleep(1)
+
                         for p in self.aCopyWorkers:
                             p.join()
-
                         if self.numLargeFiles > 0:
                             self.LargeCopyWorkerProcess.join()
 
                         self.task_queue.task_done()
-
-                        break
-
-                    self.dict_Jobs[self.ID].progress = (self.CurrentQueueSize/len(self.files))*100
-                    if self.CurrentQueueSize > self.OldQueueSize:
-                        self.OldQueueSize = self.CurrentQueueSize
-                        #write out data each time a file has been processed
+                        #write job status xml
                         self.WriteJob(self.dict_Data,self.dict_Jobs,self.ID)
-
-
-                    if self.dict_Jobs[self.ID].progress >= 100.0:
-                        self.dict_Jobs[self.ID].progress = 100.0
-                        self.dict_Jobs[self.ID].active = False
-
-                        while not self.result_queue.empty():
-                            self.result_queue.get()
-                        break
-
-
-                if self.dict_Jobs[self.ID].progress >= 100.0:
-                    self.dict_Jobs[self.ID].active = False
-                    self.dict_Jobs[self.ID].progress = 100.0
-
-                    while not self.result_queue.empty():
-                        self.result_queue.get()
-
-                    for p in self.aCopyWorkers:
-                        self.worker_queue.put(None)
-
-                    self.large_worker_queue.put(None)
-                    time.sleep(1)
-
-                    for p in self.aCopyWorkers:
-                        p.join()
-                    if self.numLargeFiles > 0:
-                        self.LargeCopyWorkerProcess.join()
-
-                    self.task_queue.task_done()
-                    #write job status xml
-                    self.WriteJob(self.dict_Data,self.dict_Jobs,self.ID)
-                    logging.debug("Finished job")
+                        logging.debug("Finished job")
         logging.debug("Shutting down line manager")
