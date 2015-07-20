@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Config>
-    <lineworkers>2</lineworkers>
+    <lineworkers>1</lineworkers>
     <copyworkers>10</copyworkers>
     <serverport>9090</serverport>
     <largefilethreshold>5</largefilethreshold>
-    <path>z:/destination/</path>
+    <path>d:/destination/</path>
     <numtcpport>5</numtcpport>
 </Config>

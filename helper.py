@@ -46,9 +46,13 @@ class c_HelperFunctions():
             fileItem.set("copied",str(data.copied))
             fileItem.set("delete",str(data.delete))
             fileItem.set("uploaded",str(data.uploaded))
+            fileItem.set("size",str(data.size))
         self.indent(Task)
         Tree = ET.ElementTree(Task)
-        Tree.write(dict_workdata["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml", xml_declaration=True, encoding='utf-8', method="xml")
+        self.dstfile = dict_workdata["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"
+        if not os.path.exists(os.path.dirname(self.dstfile)):
+            os.makedirs(os.path.dirname(self.dstfile))
+        Tree.write(self.dstfile, xml_declaration=True, encoding='utf-8', method="xml")
     def get_xmljobs(self,Tasks):
         self.xmljobs = []
         for ID in os.listdir(Tasks.WorkData["sTargetDir"]):
@@ -97,9 +101,9 @@ class c_HelperFunctions():
                 for f in self.aFilePaths:
                     self.path = os.path.normpath(f)
 
-                    self.FileList[self.path] = dataclasses.c_file()
+                    self.FileList[self.path] = dataclasses.c_file(os.path.getsize(f))
             elif FileObj["type"] == "file":
                 self.path = os.path.normpath(FileObj["data"])
-                self.FileList[self.path] = dataclasses.c_file()
+                self.FileList[self.path] = dataclasses.c_file(os.path.getsize(f))
 
         return self.FileList

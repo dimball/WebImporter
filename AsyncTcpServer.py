@@ -15,6 +15,7 @@ except ImportError:
 import dataclasses
 import logging
 import workers
+import time
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
@@ -27,11 +28,14 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Data["payload"]= Payload
         self.Output["status"] = ID
         Tasks.Jobs[ID].state = "busy"
+        Tasks.Order.append(ID)
+
         Tasks.Jobs[ID].progress = -1
         Tasks.Jobs[ID].filelist = self.FileExpand(ID,Payload)
         logging.debug("Number of tasks:%s", len(Tasks.Jobs[ID].filelist))
         Tasks.Jobs[ID].state = "ready"
-        self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
+        self.WriteJob(Tasks.WorkData,Tasks.Jobs,ID)
+        #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
@@ -134,9 +138,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
-
-                if Tasks.Jobs[ID].IsComplete() == True:
-                    print("Restarting")
+                if Tasks.Jobs[ID].active == False:
                     Tasks.Jobs[ID].active = True
                     Tasks.Jobs[ID].workerlist = {}
                     Tasks.Jobs[ID].ResetFileStatus()
@@ -144,14 +146,14 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                     for folder in os.listdir(Tasks.WorkData["sTargetDir"] + ID):
                         self.fullpath = Tasks.WorkData["sTargetDir"] + ID + "/" + folder + "/"
                         if os.path.isdir(self.fullpath):
-                            print("removing")
-                            #shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
+                            shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
                         else:
                             logging.debug("%s is not a folder",self.fullpath)
                     Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                    #     logging.debug("Task is being restarted: %s", ID)
-                    #     Tasks.task_queue.put(Tasks.Jobs[ID])
-
+                    logging.debug("Task is being restarted: %s", ID)
+                    Tasks.task_queue.put(Tasks.Jobs[ID])
+                else:
+                    logging.debug("Task is already active:%s", ID)
             else:
                 self.Output["status"] = "Task is busy. Try again when it is ready"
                 self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
@@ -163,22 +165,110 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         #dequeue
         #put the jobs back into the queue in the right order
 
-        self.aActiveList = []
-        for ID in Tasks.Jobs.items():
-            if Tasks.Jobs[ID].active == True:
-                self.aActiveList.append(ID)
-                Tasks.Jobs[ID].active = False
+        # self.aActiveList = []
+        # for ID in Tasks.Jobs:
+        #     if Tasks.Jobs[ID].active == True:
+        #         self.aActiveList.append(ID)
+        #         Tasks.Jobs[ID].active = False
 
         while not Tasks.task_queue.empty():
             Tasks.task_queue.get()
 
+        logging.debug("Setting new priorities")
+        self.counter = 0
         for ID in Payload:
-            for Active in self.aActiveList:
-                if ID == Active:
+            Tasks.Jobs[ID].ResetFileStatus()
+            # for Active in self.aActiveList:
+            #     if ID == Active:
+            #         Tasks.Jobs[ID].active = True
+
+            print(str(self.counter) + ":" + ID)
+            if Tasks.Jobs[ID].active == False:
+                if not Tasks.Jobs[ID].IsComplete():
+                    Tasks.task_queue.put(Tasks.Jobs[ID])
+            self.counter += 1
+
+
+    def m_resume_job(self,ID):
+        if ID in Tasks.Jobs:
+            if Tasks.Jobs[ID].active == False:
+                if Tasks.Jobs[ID].IsComplete() == False:
+                    logging.debug("Resuming Job : %s",ID)
                     Tasks.Jobs[ID].active = True
+                    Tasks.Jobs[ID].workerlist = {}
+                    Tasks.task_queue.put(Tasks.Jobs[ID])
+                else:
+                    logging.debug("Cannot resume task: %s. Task is already complete. Restart Task if you want to do the job again", ID)
+        else:
+            self.Output["status"] = "Cannot resume as task does not exist"
+            self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
+    def m_modify_task(self,ID,Payload):
+        self.ID = ID
+        self.Payload = Payload
 
-            Tasks.task_queue.put(Tasks.Jobs[ID])
+        if Tasks.Jobs[ID].active == False:
+            logging.debug("Getting files and storing their sizes")
+            self.incomingFiles = self.FileExpand(self.ID, self.Payload)
+            Tasks.Jobs[self.ID].state = "busy"
 
+            if len(Tasks.Jobs[self.ID].filelist) < len(self.incomingFiles):
+                #print("there are LESS files in current list")
+                #if there is less files in the current list then iterate over the current list against the incoming files. If file in current list
+                #exist in incoming files, then keep file. If file in current list does not exist in incoming list, then mark for deletion.
+                for file in Tasks.Jobs[self.ID].filelist:
+                    Tasks.Jobs[self.ID].filelist[file].delete = True
+                    if file in self.incomingFiles == True:
+                        Tasks.Jobs[self.ID].filelist[file].delete = False
+
+
+                    if Tasks.Jobs[self.ID].filelist[file].delete == True:
+                        self.head,self.tail = os.path.splitdrive(file)
+                        self.dstfile = os.path.normpath(Tasks.WorkData["sTargetDir"] + self.ID + "/" + self.tail)
+
+                        if os.path.exists(self.dstfile):
+                            logging.debug("deleting:%s",self.dstfile)
+                            shutil.rmtree(self.dstfile,onerror=self.remove_readonly)
+                            #also remove folder if the folder is empty.
+                            #check if the directory that the file was in can be removed. If it can be removed then remove it.
+                            if len(os.listdir(os.path.dirname(self.dstfile)))== 0:
+                                logging.debug("Removing directory:%s",os.path.dirname(self.dstfile))
+                                os.rmdir(os.path.dirname(self.dstfile))
+
+                Tasks.Jobs[self.ID].filelist = self.incomingFiles
+            else:
+                #print("there are MORE files in current list")
+                #if there are more files in the current list than in the incoming list, then iterate over the incoming list. If the file in the incoming list
+                #exists in the current list AND the file in the current list has been marked as copied, then keep the file. If it does not exists
+
+                for file in Tasks.Jobs[self.ID].filelist:
+                    Tasks.Jobs[self.ID].filelist[file].delete = True
+
+                for file in self.incomingFiles:
+                    #if incoming file exists in the current filelist
+                    if file in Tasks.Jobs[self.ID].filelist:
+                        #mark the file in the current list to NOT to be deleted
+                        Tasks.Jobs[self.ID].filelist[file].delete = False
+
+                for file in Tasks.Jobs[self.ID].filelist:
+                    if Tasks.Jobs[self.ID].filelist[file].delete == True:
+                        self.head,self.tail = os.path.splitdrive(file)
+                        self.dstfile = os.path.normpath(Tasks.WorkData["sTargetDir"] + self.ID + "/" + self.tail)
+                        if os.path.exists(self.dstfile):
+                            logging.debug("deleting:%s",self.dstfile)
+                            shutil.rmtree(self.dstfile,onerror=self.remove_readonly)
+                            #also remove folder if the folder is empty.
+                            #check if the directory that the file was in can be removed. If it can be removed then remove it.
+                            if len(os.listdir(os.path.dirname(self.dstfile)))== 0:
+                                logging.debug("Removing directory:%s",os.path.dirname(self.dstfile))
+                                os.rmdir(os.path.dirname(self.dstfile))
+
+
+                Tasks.Jobs[self.ID].filelist = self.incomingFiles
+
+            Tasks.Jobs[self.ID].state = "ready"
+            Tasks.Jobs[self.ID].active = False
+            logging.debug("modified task: %s",self.ID)
+            self.WriteJob(Tasks.WorkData,Tasks.Jobs,self.ID)
     def setup(self):
         #print("Setting up request")
         self.Data = {}
@@ -200,8 +290,9 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         elif self.Command == "restart_task":
             self.ID = self.Payload
             self.m_restart_task(self.ID)
-        # elif self.Command == "resume_job":
-        #     self.m_resume_job()
+        elif self.Command == "resume_job":
+            self.ID = self.Payload
+            self.m_resume_job(self.ID)
         elif self.Command == "status":
             self.m_status()
         elif self.Command == "get_tasks":
@@ -215,8 +306,10 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.m_remove_completed_tasks()
         elif self.Command == "remove_incomplete_tasks":
             self.m_remove_incomplete_tasks()
-        # elif self.Command == "modify_task":
-        #     self.m_modify_task()
+        elif self.Command == "modify_task":
+            self.ID = self.Payload["ID"]
+            self.Payload = self.Payload["Payload"]
+            self.m_modify_task(self.ID,self.Payload)
         elif self.Command == "set_priority":
             self.m_setpriority(self.Payload)
 
@@ -259,11 +352,11 @@ class server(hfn.c_HelperFunctions):
             self.root = self.tree.getroot()
             Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
             Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
-            Tasks.Jobs[self.root.attrib["ID"]].active = self.root.attrib["active"]
+            Tasks.Jobs[self.root.attrib["ID"]].active = self.StringToBool(self.root.attrib["active"])
             self.bIsActive = True
             self.CopiedFiles = 0
             for file in self.root.find("FileList").findall("File"):
-                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file()
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file(os.path.getsize(file.attrib["file"]))
 
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].copied = self.StringToBool(file.attrib["copied"])
                 if file.attrib["copied"] == True:
@@ -271,6 +364,7 @@ class server(hfn.c_HelperFunctions):
                     self.CopiedFiles += 1
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
 
             Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
         for f in Tasks.Jobs:
@@ -297,15 +391,21 @@ class server(hfn.c_HelperFunctions):
             self.aLineManagers.append(self.LineManager)
 
         logging.debug("Server loop running in thread:%s", server_thread.name)
+
         while Tasks.shutdown == False:
             message = "waiting_until_shutdown_command"
 
+        logging.debug("Exiting server loop")
+        while not Tasks.task_queue.empty():
+            Tasks.task_queue.get()
         for p in self.aLineManagers:
             Tasks.task_queue.put(None)
 
         for p in self.aLineManagers:
             p.join()
+
         server.shutdown()
+        logging.debug("Server is shutdown")
 
 
 
