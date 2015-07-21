@@ -8,6 +8,7 @@ class c_file():
         self.size = size
 class c_Task():
     def __init__(self,ID):
+        self.order = 0
         self.TaskID = str(ID)
         self.state = "ready"
         self.active = False
@@ -44,3 +45,4 @@ class c_data():
         self.task_queue = queue.Queue()
         self.WorkData = {}
         self.shutdown = False
+        self.LineManagers = []

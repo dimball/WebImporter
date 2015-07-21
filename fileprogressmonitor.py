@@ -34,7 +34,6 @@ class c_FileProgressMonitor(threading.Thread):
             self.currentSize = os.path.getsize(self.tgtfile)
             self.dict_Jobs[self.ID].workerlist[self.worker_name][self.srcfile] = ((self.currentSize/self.size)*100.0)
             self.dict_Jobs[self.ID].filelist[self.srcfile].progress = ((self.currentSize/self.size)*100.0)
-            print(self.dict_Jobs[self.ID].filelist[self.srcfile].progress)
             if self.dict_Jobs[self.ID].active == False:
                 logging.debug("Aborted file check")
                 break

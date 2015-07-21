@@ -32,12 +32,13 @@ class c_HelperFunctions():
       else:
         if level and (not elem.tail or not elem.tail.strip()):
           elem.tail = i
-    def WriteJob(self,dict_workdata, dict_Jobs, ID):
-        TaskObject = dict_Jobs[ID]
+    def WriteJob(self,Tasks, ID):
+        TaskObject = Tasks.Jobs[ID]
         Task = ET.Element("Task")
         Task.set("ID",str(ID))
         Task.set("state",str(TaskObject.state))
         Task.set("active",str(TaskObject.active))
+        Task.set("order",str(TaskObject.order))
         FileList = ET.SubElement(Task,"FileList")
         for file in TaskObject.filelist:
             data = TaskObject.filelist[file]
@@ -49,7 +50,7 @@ class c_HelperFunctions():
             fileItem.set("size",str(data.size))
         self.indent(Task)
         Tree = ET.ElementTree(Task)
-        self.dstfile = dict_workdata["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"
+        self.dstfile = Tasks.WorkData["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"
         if not os.path.exists(os.path.dirname(self.dstfile)):
             os.makedirs(os.path.dirname(self.dstfile))
         Tree.write(self.dstfile, xml_declaration=True, encoding='utf-8', method="xml")

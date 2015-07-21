@@ -28,14 +28,57 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Data["payload"]= Payload
         self.Output["status"] = ID
         Tasks.Jobs[ID].state = "busy"
-        Tasks.Order.append(ID)
 
+        Tasks.Order.append(ID)
+        Tasks.Jobs[ID].order = len(Tasks.Order)
         Tasks.Jobs[ID].progress = -1
         Tasks.Jobs[ID].filelist = self.FileExpand(ID,Payload)
-        logging.debug("Number of tasks:%s", len(Tasks.Jobs[ID].filelist))
+        logging.debug("Number of files:%s", len(Tasks.Jobs[ID].filelist))
         Tasks.Jobs[ID].state = "ready"
-        self.WriteJob(Tasks.WorkData,Tasks.Jobs,ID)
+        self.WriteJob(Tasks,ID)
         #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
+    def m_put_tasks_on_queue(self):
+        #stop the jobs in the queue
+        self.OldStatus = {}
+        for ID in Tasks.Jobs:
+            self.OldStatus[ID] = Tasks.Jobs[ID].active
+            Tasks.Jobs[ID].active = False
+        for p in Tasks.LineManagers:
+            while len(p.Threads)>0:
+                continue
+        #clear queue
+        while not Tasks.task_queue.empty():
+            Tasks.task_queue.get()
+        #add task to queue in the right order
+        for ID in Tasks.Order:
+            logging.debug("Putting task %s on queue", ID)
+            Tasks.Jobs[ID].active = self.OldStatus[ID]
+            Tasks.task_queue.put(Tasks.Jobs[ID])
+
+    def m_activate_queue(self):
+        for i in range(Tasks.WorkData["Line_Managers"]):
+            if len(Tasks.LineManagers) < Tasks.WorkData["Line_Managers"]:
+                self.LineManager = workers.c_LineCopyManager(Tasks, "Line_manager_" + str(i))
+                self.LineManager.start()
+                Tasks.LineManagers.append(self.LineManager)
+            else:
+                logging.debug("Line managers are already activated (%s defined in config)",Tasks.WorkData["Line_Managers"])
+    def m_deactivate_queue(self):
+
+        if len(Tasks.LineManagers)>0:
+            logging.debug("Stopping line managers")
+            for ID in Tasks.Jobs:
+                self.m_pause_task(ID)
+            while not Tasks.task_queue.empty():
+                Tasks.task_queue.get()
+            for p in Tasks.LineManagers:
+                Tasks.task_queue.put(None)
+            for p in Tasks.LineManagers:
+                p.join()
+                Tasks.LineManagers.remove(p)
+        else:
+            logging.debug("Line managers already stopped")
+
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
@@ -44,7 +87,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                         Tasks.Jobs[ID].active = True
                         Tasks.Jobs[ID].workerlist = {}
                         Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                        Tasks.task_queue.put(Tasks.Jobs[ID])
+                        logging.debug("Activating task:%s", ID)
                 else:
                     self.Output["status"] = "Task already started"
                     self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
@@ -63,7 +106,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
     def m_status(self):
         if self.Payload in Tasks.Jobs:
             if Tasks.Jobs[self.Payload].active:
-                print(Tasks.Jobs[self.Payload].progress)
                 if Tasks.Jobs[self.Payload].progress == -1:
                     self.Output["status"] = "Not Started"
                     self.Output["worker"] = {}
@@ -117,7 +159,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         for ID,job in Tasks.Jobs.items():
             self.aList.append(ID)
         for ID in self.aList:
-            if Tasks.Jobs[ID].IsComplete() == False and Tasks.Jobs[ID].active == False:
+            if not Tasks.Jobs[ID].IsComplete() and not Tasks.Jobs[ID].active:
                 self.fullpath = Tasks.WorkData["sTargetDir"] + ID
                 if os.path.isdir(self.fullpath):
                     shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
@@ -131,7 +173,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         Tasks.Jobs[ID].active = False
         self.Output["status"] = "Paused job " + ID
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
-        self.WriteJob(Tasks.WorkData,Tasks.Jobs,ID)
+        self.WriteJob(Tasks,ID)
 
     def m_restart_task(self,ID):
         self.Output["status"] = "test"
@@ -150,8 +192,9 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                         else:
                             logging.debug("%s is not a folder",self.fullpath)
                     Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                    logging.debug("Task is being restarted: %s", ID)
-                    Tasks.task_queue.put(Tasks.Jobs[ID])
+                    logging.debug("Task is being restarted: %s. Remember to put the tasks on the queue again", ID)
+                    self.WriteJob(Tasks,ID)
+                    #Tasks.task_queue.put(Tasks.Jobs[ID])
                 else:
                     logging.debug("Task is already active:%s", ID)
             else:
@@ -161,34 +204,18 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.Output["status"] = "Task does not exist"
             self.request.sendall(bytes(self.Output,'utf-8'))
     def m_setpriority(self,Payload):
-        #stop the queue
-        #dequeue
-        #put the jobs back into the queue in the right order
-
-        # self.aActiveList = []
-        # for ID in Tasks.Jobs:
-        #     if Tasks.Jobs[ID].active == True:
-        #         self.aActiveList.append(ID)
-        #         Tasks.Jobs[ID].active = False
-
-        while not Tasks.task_queue.empty():
-            Tasks.task_queue.get()
-
         logging.debug("Setting new priorities")
-        self.counter = 0
-        for ID in Payload:
-            Tasks.Jobs[ID].ResetFileStatus()
-            # for Active in self.aActiveList:
-            #     if ID == Active:
-            #         Tasks.Jobs[ID].active = True
-
-            print(str(self.counter) + ":" + ID)
-            if Tasks.Jobs[ID].active == False:
-                if not Tasks.Jobs[ID].IsComplete():
-                    Tasks.task_queue.put(Tasks.Jobs[ID])
+        Tasks.Order = Payload
+        self.counter = 1
+        for ID in Tasks.Order:
+            Tasks.Jobs[ID].order = self.counter
+            self.WriteJob(Tasks,ID)
             self.counter += 1
-
-
+        self.counter = 0
+        for ID in Tasks.Order:
+            logging.debug("%s:%s",self.counter,ID)
+            self.counter += 1
+        self.m_put_tasks_on_queue()
     def m_resume_job(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].active == False:
@@ -196,12 +223,13 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                     logging.debug("Resuming Job : %s",ID)
                     Tasks.Jobs[ID].active = True
                     Tasks.Jobs[ID].workerlist = {}
-                    Tasks.task_queue.put(Tasks.Jobs[ID])
                 else:
                     logging.debug("Cannot resume task: %s. Task is already complete. Restart Task if you want to do the job again", ID)
         else:
             self.Output["status"] = "Cannot resume as task does not exist"
             self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
+
+        self.m_put_tasks_on_queue()
     def m_modify_task(self,ID,Payload):
         self.ID = ID
         self.Payload = Payload
@@ -268,7 +296,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             Tasks.Jobs[self.ID].state = "ready"
             Tasks.Jobs[self.ID].active = False
             logging.debug("modified task: %s",self.ID)
-            self.WriteJob(Tasks.WorkData,Tasks.Jobs,self.ID)
+            self.WriteJob(Tasks,self.ID)
     def setup(self):
         #print("Setting up request")
         self.Data = {}
@@ -281,40 +309,48 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Command = self.data["command"]
         self.Payload = self.data["payload"]
         self.Output = {}
-        if self.Command == "create_copytask":
+        if self.Command == "/webimporter/v1/queue/task/create":
             self.ID = str(uuid.uuid4())
             self.m_create_task(self.ID,self.Payload)
-        elif self.Command == "start_task":
+        elif self.Command == "/webimporter/v1/queue/task/start":
             self.ID = self.Payload
             self.m_start_task(self.ID)
-        elif self.Command == "restart_task":
+        elif self.Command == "/webimporter/v1/queue/task/restart":
             self.ID = self.Payload
             self.m_restart_task(self.ID)
-        elif self.Command == "resume_job":
+        elif self.Command == "/webimporter/v1/queue/task/resume":
             self.ID = self.Payload
             self.m_resume_job(self.ID)
-        elif self.Command == "status":
+        elif self.Command == "/webimporter/v1/queue/status":
             self.m_status()
-        elif self.Command == "get_tasks":
+        elif self.Command == "/webimporter/v1/queue/task/get_all":
             self.m_get_tasks()
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
-        elif self.Command == "pause_job":
+        elif self.Command == "/webimporter/v1/queue/task/pause":
             self.ID = self.Payload
             self.m_pause_task(self.ID)
-        elif self.Command == "remove_completed_tasks":
+        elif self.Command == "/webimporter/v1/queue/task/remove_completed":
             self.m_remove_completed_tasks()
-        elif self.Command == "remove_incomplete_tasks":
+        elif self.Command == "/webimporter/v1/queue/task/remove_incomplete":
             self.m_remove_incomplete_tasks()
-        elif self.Command == "modify_task":
+        elif self.Command == "/webimporter/v1/queue/task/modify":
             self.ID = self.Payload["ID"]
             self.Payload = self.Payload["Payload"]
             self.m_modify_task(self.ID,self.Payload)
-        elif self.Command == "set_priority":
+        elif self.Command == "/webimporter/v1/queue/set_priority":
             self.m_setpriority(self.Payload)
+        elif self.Command == "/webimporter/v1/queue/activate":
+            self.m_activate_queue()
+        elif self.Command == "/webimporter/v1/queue/deactivate":
+            self.m_deactivate_queue()
+        elif self.Command == "/webimporter/v1/queue/put_tasks":
+            self.m_put_tasks_on_queue()
 
-        elif self.Command == "shutdown_server":
+        elif self.Command == "/webimporter/v1/server/shutdown":
             logging.debug("Shutting down server")
+            #go to each line manager and ask it to shut down
+            self.m_deactivate_queue()
             Tasks.shutdown = True
 
     # def finish(self):
@@ -347,12 +383,19 @@ class server(hfn.c_HelperFunctions):
         self.aFiles = self.get_xmljobs(Tasks)
 
         self.filecounter = 0
+
+        for i in range(len(self.aFiles)):
+            Tasks.Order.append(i)
+
         for f in self.aFiles:
             self.tree = ET.ElementTree(file=f)
             self.root = self.tree.getroot()
             Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
             Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
             Tasks.Jobs[self.root.attrib["ID"]].active = self.StringToBool(self.root.attrib["active"])
+            Tasks.Jobs[self.root.attrib["ID"]].order = int(self.root.attrib["order"])
+            Tasks.Order[int(self.root.attrib["order"])-1] = self.root.attrib["ID"]
+
             self.bIsActive = True
             self.CopiedFiles = 0
             for file in self.root.find("FileList").findall("File"):
@@ -367,16 +410,17 @@ class server(hfn.c_HelperFunctions):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
 
             Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
-        for f in Tasks.Jobs:
+
+        for ID in Tasks.Order:
             self.aIncompleteFiles = 0
-            for file in Tasks.Jobs[f].filelist:
-                if Tasks.Jobs[f].filelist[file].copied == False:
+            for file in Tasks.Jobs[ID].filelist:
+                if Tasks.Jobs[ID].filelist[file].copied == True:
                     self.aIncompleteFiles += 1
-            logging.debug("Loading task:[%s] %s : %s files. %s Incomplete", Tasks.Jobs[f].active, f, len(Tasks.Jobs[f].filelist), self.aIncompleteFiles)
+            logging.debug("Loading task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
 
     def run(self):
         # Port 0 means to select an arbitrary unused port
-        HOST, PORT = "localhost", 9090
+        HOST, PORT = "localhost",  Tasks.WorkData["serverport"]
         server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
         ip, port = server.server_address
         # Start a thread with the server -- that thread will then start one
@@ -385,23 +429,22 @@ class server(hfn.c_HelperFunctions):
         # Exit the server thread when the main thread terminates
         server_thread.daemon = True
         server_thread.start()
-        for i in range(self.dict_WorkData["Line_Managers"]):
-            self.LineManager = workers.c_LineCopyManager(Tasks, "Line_manager_" + str(i))
-            self.LineManager.start()
-            self.aLineManagers.append(self.LineManager)
-
+        server_thread.name = "Main_Server"
         logging.debug("Server loop running in thread:%s", server_thread.name)
 
-        while Tasks.shutdown == False:
-            message = "waiting_until_shutdown_command"
+        while not Tasks.shutdown:
+             time.sleep(1)
+             continue
 
         logging.debug("Exiting server loop")
         while not Tasks.task_queue.empty():
             Tasks.task_queue.get()
-        for p in self.aLineManagers:
-            Tasks.task_queue.put(None)
 
-        for p in self.aLineManagers:
+        for p in Tasks.LineManagers:
+            if p.isAlive():
+                Tasks.task_queue.put(None)
+
+        for p in Tasks.LineManagers:
             p.join()
 
         server.shutdown()
