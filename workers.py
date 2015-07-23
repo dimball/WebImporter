@@ -342,6 +342,9 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     self.dict_Jobs[self.ID].progress = (self.CurrentSize+self.CurrentQueueSize)/len(self.next_task.filelist)*100
                     if self.CurrentQueueSize > self.OldQueueSize:
                         self.OldQueueSize = self.CurrentQueueSize
+                        #send progress to the sync server here?
+
+
                         #write out data each time a file has been processed
                         self.WriteJob(self.Tasks,self.ID)
 

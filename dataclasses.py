@@ -15,6 +15,8 @@ class c_Task():
         self.progress = 0
         self.workerlist = {}
         self.filelist = {}
+        self.metadata = {}
+        self.type = "local"
 
     def GetCurrentProgress(self):
         self.CopiedFiles = 0
@@ -46,3 +48,4 @@ class c_data():
         self.WorkData = {}
         self.shutdown = False
         self.LineManagers = []
+        self.syncserver_client = None

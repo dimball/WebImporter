@@ -3,6 +3,10 @@
     <lineworkers>1</lineworkers>
     <copyworkers>10</copyworkers>
     <serverport>9090</serverport>
+
+    <syncserver_ip>localhost</syncserver_ip>
+    <syncserver_port>8908</syncserver_port>
+
     <largefilethreshold>5</largefilethreshold>
     <path>d:/destination/</path>
     <numtcpport>5</numtcpport>

@@ -13,12 +13,15 @@ except ImportError:
 
 
 import dataclasses
-import logging
+
 import workers
 import time
+import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
+import socket
+
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunctions):
     def m_create_task(self,ID,Payload):
         logging.debug("Creating task : %s",ID)
@@ -35,6 +38,24 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         Tasks.Jobs[ID].filelist = self.FileExpand(ID,Payload)
         logging.debug("Number of files:%s", len(Tasks.Jobs[ID].filelist))
         Tasks.Jobs[ID].state = "ready"
+
+        '''
+        When creating a task, also send the data to the sync server. Send the ID here. When metadata is created, then send the ID with the metadata so
+        that other clients can see this as well.
+
+
+
+        '''
+        Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/webimporter/syncserver/v1/global/queue/task/put',Tasks.syncserver_client.m_SerialiseSyncTasks()))
+
+
+
+
+
+
+
+
+
         self.WriteJob(Tasks,ID)
         #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
     def m_put_tasks_on_queue(self):
@@ -325,6 +346,32 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.m_status()
         elif self.Command == "/webimporter/v1/queue/task/get_all":
             self.m_get_tasks()
+        elif self.Command == "/webimporter/v1/global/queue/put":
+            logging.debug("Received Data from syncserver:%s", self.Payload)
+
+
+            self.data = json.loads(self.Payload)
+            if len(self.data)>0:
+                Tasks.Order = []
+                for Data in self.data:
+
+                    self.bFound = False
+
+                    for ID in Tasks.Order:
+                        if ID == Data["ID"]:
+                            self.bFound = True
+
+                    if self.bFound == False:
+                        Tasks.Order.append(Data["ID"])
+
+                    if not Data["ID"] in Tasks.Jobs:
+                        Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
+
+                    Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
+                    Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
+                    Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
+                for ID in Tasks.Order:
+                    print(ID)
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
@@ -365,8 +412,12 @@ class server(hfn.c_HelperFunctions):
         self.aLineManagers = []
         global Tasks
         Tasks = dataclasses.c_data()
+
         Tasks.WorkData = self.m_ReadConfig()
-        self.m_ReadJobList()
+
+        Tasks.syncserver_client = hfn.Client(Tasks.WorkData["syncserver_ip"],Tasks.WorkData["syncserver_port"],Tasks)
+        #send currentjobs to the sync server?
+
     def m_ReadConfig(self):
         self.dict_WorkData = {}
         self.tree = ET.ElementTree(file="./config.xml")
@@ -377,6 +428,8 @@ class server(hfn.c_HelperFunctions):
         self.dict_WorkData["serverport"] = int(self.config.find("serverport").text)
         self.dict_WorkData["Num_TCP_port"] = int(self.config.find("numtcpport").text)
         self.dict_WorkData["large_file_threshold"] = int(self.config.find("largefilethreshold").text)
+        self.dict_WorkData["syncserver_ip"] = self.config.find("syncserver_ip").text
+        self.dict_WorkData["syncserver_port"] = self.config.find("syncserver_port").text
         return self.dict_WorkData
     def m_ReadJobList(self):
         logging.debug("Init TCP server: Reading existing jobs from %s", Tasks.WorkData["sTargetDir"])
@@ -384,17 +437,24 @@ class server(hfn.c_HelperFunctions):
 
         self.filecounter = 0
 
-        for i in range(len(self.aFiles)):
-            Tasks.Order.append(i)
-
         for f in self.aFiles:
             self.tree = ET.ElementTree(file=f)
             self.root = self.tree.getroot()
+            print(self.root.attrib["ID"],int(self.root.attrib["order"]))
             Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
             Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
             Tasks.Jobs[self.root.attrib["ID"]].active = self.StringToBool(self.root.attrib["active"])
             Tasks.Jobs[self.root.attrib["ID"]].order = int(self.root.attrib["order"])
-            Tasks.Order[int(self.root.attrib["order"])-1] = self.root.attrib["ID"]
+
+            if not self.m_Is_ID_In_List(Tasks.Order,self.root.attrib["ID"]):
+                if int(self.root.attrib["order"])-1 < len(Tasks.Order):
+                    #if this is less than the length of the length of the tasks list then figure out where it
+                    #should be in the list
+                    Tasks.Order.insert(int(self.root.attrib["order"])-1,self.root.attrib["ID"])
+                else:
+                    Tasks.Order.append(self.root.attrib["ID"])
+                    Tasks.Jobs[self.root.attrib["ID"]].order = len(Tasks.Order)
+
 
             self.bIsActive = True
             self.CopiedFiles = 0
@@ -410,14 +470,20 @@ class server(hfn.c_HelperFunctions):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
 
             Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
-
+        self.counter = 1
+        for ID in Tasks.Order:
+            Tasks.Jobs[ID].order = self.counter
+            self.counter += 1
         for ID in Tasks.Order:
             self.aIncompleteFiles = 0
-            for file in Tasks.Jobs[ID].filelist:
-                if Tasks.Jobs[ID].filelist[file].copied == True:
-                    self.aIncompleteFiles += 1
-            logging.debug("Loading task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
-
+            if ID in Tasks.Jobs:
+                for file in Tasks.Jobs[ID].filelist:
+                    if Tasks.Jobs[ID].filelist[file].copied == True:
+                        self.aIncompleteFiles += 1
+                if Tasks.Jobs[ID].type == "local":
+                    logging.debug("Loading LOCAL task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
+                else:
+                    logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, (Tasks.Jobs[ID].progress))
     def run(self):
         # Port 0 means to select an arbitrary unused port
         HOST, PORT = "localhost",  Tasks.WorkData["serverport"]
@@ -430,6 +496,9 @@ class server(hfn.c_HelperFunctions):
         server_thread.daemon = True
         server_thread.start()
         server_thread.name = "Main_Server"
+
+        Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/webimporter/syncserver/v1/global/queue/task/put', Tasks.syncserver_client.m_SerialiseSyncTasks()))
+        self.m_ReadJobList()
         logging.debug("Server loop running in thread:%s", server_thread.name)
 
         while not Tasks.shutdown:
