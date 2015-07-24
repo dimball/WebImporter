@@ -18,16 +18,17 @@ logging.basicConfig(level=logging.DEBUG,
                     )
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunctions):
-    def m_create_task(self,ID,Payload):
-        logging.debug("Creating task : %s",ID)
-        Tasks.Jobs[ID] = dataclasses.c_Task(ID)
-        self.Data["ID"] = ID
+    def m_create_task(self, Payload):
+        self.ID = str(uuid.uuid4())
+        logging.debug("Creating task : %s", self.ID)
+        Tasks.Jobs[self.ID] = dataclasses.c_Task(self.ID)
+        self.Data["ID"] = self.ID
         self.Data["command"]="expand_files"
         self.Data["payload"]= Payload
-        self.Output["status"] = ID
-        Tasks.Jobs[ID].state = "busy"
+        self.Output["status"] = self.ID
+        Tasks.Jobs[self.ID].state = "busy"
 
-        Tasks.Order.append(ID)
+        Tasks.Order.append(self.ID)
         self.highestorderID = 0
         for JobID in Tasks.Jobs:
 #            logging.debug("job id is:%s,%s", JobID, Tasks.Jobs[JobID].order)
@@ -35,11 +36,11 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                 self.highestorderID = int(Tasks.Jobs[JobID].order)
 
         logging.debug("Highest order ID:%s", self.highestorderID+1)
-        Tasks.Jobs[ID].order = self.highestorderID+1
-        Tasks.Jobs[ID].progress = -1
-        Tasks.Jobs[ID].filelist = self.FileExpand(ID,Payload)
-        logging.debug("Number of files:%s", len(Tasks.Jobs[ID].filelist))
-        Tasks.Jobs[ID].state = "ready"
+        Tasks.Jobs[self.ID].order = self.highestorderID+1
+        Tasks.Jobs[self.ID].progress = -1
+        Tasks.Jobs[self.ID].filelist = self.FileExpand(self.ID,Payload)
+        logging.debug("Number of files:%s", len(Tasks.Jobs[self.ID].filelist))
+        Tasks.Jobs[self.ID].state = "ready"
 
         '''
         When creating a task, also send the data to the sync server. Send the ID here. When metadata is created, then send the ID with the metadata so
@@ -47,7 +48,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         '''
         if Tasks.syncserver_client.connected:
             Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',Tasks.syncserver_client.m_SerialiseSyncTasks()))
-        self.WriteJob(Tasks,ID)
+        self.WriteJob(Tasks,self.ID)
         #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
     def m_put_tasks_on_queue(self):
         #stop the jobs in the queue
@@ -362,52 +363,69 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Payload = self.data["payload"]
         self.Output = {}
         if self.Command == "/webimporter/v1/queue/task/create":
-            self.ID = str(uuid.uuid4())
-            self.m_create_task(self.ID,self.Payload)
+            ############################ CREATE TASK ############################
+            self.m_create_task(self.Payload)
         elif self.Command == "/webimporter/v1/queue/task/start":
+            ############################ ACTIVATE TASK ############################
             self.ID = self.Payload
             self.m_start_task(self.ID)
         elif self.Command == "/webimporter/v1/queue/task/restart":
+            ############################ RESTART TASK ############################
             self.ID = self.Payload
             self.m_restart_task(self.ID)
         elif self.Command == "/webimporter/v1/queue/task/resume":
+            ############################ RESUME TASK ############################
             self.ID = self.Payload
             self.m_resume_job(self.ID)
         elif self.Command == "/webimporter/v1/queue/status":
+            ############################ GET STATUS ############################
             self.m_status()
         elif self.Command == "/webimporter/v1/queue/task/get_all":
+            ############################ GET TASK ############################
             self.m_get_tasks()
         elif self.Command == "/webimporter/v1/global/queue/put":
+            ############################ PUT TASK ON GLOBAL LIST ############################
             self.data = json.loads(self.Payload)
             logging.debug("Received tasks from syncserver:%s", len(self.data))
             self.m_process_tasks_from_syncserver(self.data)
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
+            ############################ PAUSE TASK ############################
             self.ID = self.Payload
             self.m_pause_task(self.ID)
         elif self.Command == "/webimporter/v1/queue/task/remove_completed":
+            ############################ REMOVE COMPLETED TASKS ############################
             self.m_remove_completed_tasks()
         elif self.Command == "/webimporter/v1/queue/task/remove_incomplete":
+            ############################ REMOVE INCOMPLETE TASKS ############################
             self.m_remove_incomplete_tasks()
         elif self.Command == "/webimporter/v1/queue/task/modify":
+            ############################ MODIFY TASK ############################
             self.ID = self.Payload["ID"]
             self.Payload = self.Payload["Payload"]
             self.m_modify_task(self.ID,self.Payload)
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
+            ############################ SET LOCAL PRIORITY ON TASKS ############################
             self.m_setpriority(self.Payload)
         elif self.Command == "/webimporter/v1/global/queue/set_priority":
+            ############################ SET GLOBAL PRIORITY ON TASKS ############################
             #send this information to the sync server. The server will then notify all registered clients and invoke the local set priority command with the assosciated payload.
             self.m_setglobalpriority(self.Payload)
         elif self.Command == "/webimporter/v1/global/queue/get_priority":
+            ############################ GET GLOBAL PRIORITY ON TASKS ############################
             self.m_getpriority()
         elif self.Command == "/webimporter/v1/queue/activate":
+            ############################ ACTIVATE QUEUE MANAGERS ############################
             self.m_activate_queue()
         elif self.Command == "/webimporter/v1/queue/deactivate":
+            ############################ DEACTIVATE QUEUE MANAGERS ############################
             self.m_deactivate_queue()
         elif self.Command == "/webimporter/v1/queue/put_tasks":
+            ############################ PUT LOCAL TASKS ON LOCAL QUEUE ############################
             self.m_put_tasks_on_queue()
         elif self.Command == "/webimporter/v1/server/shutdown":
+            ############################ SHUTDOWN SERVER ############################
             logging.debug("Shutting down server")
             #go to each line manager and ask it to shut down
             self.m_deactivate_queue()
