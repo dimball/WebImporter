@@ -9,6 +9,7 @@ class c_file():
 class c_Task():
     def __init__(self,ID):
         self.order = 0
+        self.globalorder = 0
         self.TaskID = str(ID)
         self.state = "ready"
         self.active = False

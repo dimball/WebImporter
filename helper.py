@@ -17,7 +17,7 @@ class Client():
         self.ip = ip
         self.port = port
         self.Tasks = Tasks
-        self.m_send(self.m_create_data("/webimporter/syncserver/v1/server/register",self.Tasks.WorkData["serverport"]))
+        self.m_send(self.m_create_data("/syncserver/v1/server/register",self.Tasks.WorkData["serverport"]))
     def m_SerialiseSyncTasks(self):
         self.output = []
         for ID in self.Tasks.Order:
@@ -70,9 +70,6 @@ class Client():
 
         if self.sock != None:
             self.sock.close()
-        #return reply
-
-
 
 class c_HelperFunctions():
     def m_Is_ID_In_List(self,list,ID):
