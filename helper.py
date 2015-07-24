@@ -41,10 +41,6 @@ class Client():
         except:
             self.connected = False
             return False
-
-
-
-
     def m_SerialiseSyncTasks(self):
         self.output = []
         for ID in self.Tasks.Order:
@@ -60,7 +56,6 @@ class Client():
                 self.TaskData["Data"]["metadata"] = self.Tasks.Jobs[ID].metadata
                 self.output.append(self.TaskData)
         return json.dumps(self.output)
-
     def m_receive_all(self, sock):
         self.data = ""
         self.part = None
@@ -70,13 +65,11 @@ class Client():
             if self.part == "":
                 break
         return self.data
-
     def m_create_data(self, command, payload=0):
         self.data = {}
         self.data["command"] = command
         self.data["payload"] = payload
         return json.dumps(self.data)
-
     def m_send(self, payload, bDebug=False):
         # SOCK_STREAM == a TCP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,8 +81,6 @@ class Client():
             self.sock.send(bytes(payload, 'utf8'))
         except:
             print("")
-
-
         #sock.setblocking(0)
         self.ready = select.select([self.sock],[],[],2)
         if self.ready[0]:
@@ -102,7 +93,6 @@ class Client():
 
         if self.sock != None:
             self.sock.close()
-
 class c_HelperFunctions():
     def m_Is_ID_In_List(self,list,ID):
         self.bIsFound = False
@@ -211,5 +201,4 @@ class c_HelperFunctions():
             elif FileObj["type"] == "file":
                 self.path = os.path.normpath(FileObj["data"])
                 self.FileList[self.path] = dataclasses.c_file(os.path.getsize(f))
-
         return self.FileList

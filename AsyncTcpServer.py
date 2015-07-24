@@ -9,18 +9,13 @@ try:
     import xml.etree.cElementTree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
-
-
-
 import dataclasses
-
 import workers
 import time
 import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
-import socket
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunctions):
     def m_create_task(self,ID,Payload):
@@ -237,6 +232,12 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
 
         if len(Tasks.LineManagers)>0:
             self.m_put_tasks_on_queue()
+    def m_setglobalpriority(self,Payload):
+        if Tasks.syncserver_client.connected:
+            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/set_priority", Payload))
+        else:
+            logging.debug("Sync server not available. Setting priority locally only")
+            self.m_setpriority(Payload)
     def m_getpriority(self):
 
         self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/get_priority'))
@@ -329,7 +330,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             logging.debug("modified task: %s",self.ID)
             self.WriteJob(Tasks,self.ID)
     def m_process_tasks_from_syncserver(self, Payload):
-
         if len(Payload)>0:
             Tasks.Order = []
             self.counter = 1
@@ -349,7 +349,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                         logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
                     else:
                         logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
-
     def setup(self):
         #print("Setting up request")
         self.Data = {}
@@ -399,12 +398,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.m_setpriority(self.Payload)
         elif self.Command == "/webimporter/v1/global/queue/set_priority":
             #send this information to the sync server. The server will then notify all registered clients and invoke the local set priority command with the assosciated payload.
-            if Tasks.syncserver_client.connected:
-                Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/set_priority", self.Payload))
-            else:
-                logging.debug("Sync server not available. Setting priority locally only")
-                self.m_setpriority(self.Payload)
-
+            self.m_setglobalpriority(self.Payload)
         elif self.Command == "/webimporter/v1/global/queue/get_priority":
             self.m_getpriority()
         elif self.Command == "/webimporter/v1/queue/activate":
@@ -413,7 +407,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.m_deactivate_queue()
         elif self.Command == "/webimporter/v1/queue/put_tasks":
             self.m_put_tasks_on_queue()
-
         elif self.Command == "/webimporter/v1/server/shutdown":
             logging.debug("Shutting down server")
             #go to each line manager and ask it to shut down
@@ -429,16 +422,12 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 class server(hfn.c_HelperFunctions):
     def __init__(self):
-        self.aLineManagers = []
         global Tasks
         Tasks = dataclasses.c_data()
-
+        #read config
         Tasks.WorkData = self.m_ReadConfig()
-
+        #registering with the sync server. Determine if it is available or not. If not, will run without the sync server however only locally.
         Tasks.syncserver_client = hfn.Client(Tasks.WorkData["syncserver_ip"],Tasks.WorkData["syncserver_port"],Tasks)
-
-        #send currentjobs to the sync server?
-
     def m_ReadConfig(self):
         self.dict_WorkData = {}
         self.tree = ET.ElementTree(file="./config.xml")
@@ -512,7 +501,6 @@ class server(hfn.c_HelperFunctions):
                             self.aIncompleteFiles += 1
                     if Tasks.Jobs[ID].type == "local":
                         logging.debug("Loading LOCAL task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
-
     def run(self):
         # Port 0 means to select an arbitrary unused port
         HOST, PORT = "localhost",  Tasks.WorkData["local_serverport"]
@@ -531,7 +519,6 @@ class server(hfn.c_HelperFunctions):
         if Tasks.syncserver_client.connected:
             Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put', Tasks.syncserver_client.m_SerialiseSyncTasks()))
         #the put task on the sync server will notify all registered clients about the tasks sent from this client. This also includes the order of the tasks.
-
         logging.debug("Server loop running in thread:%s", server_thread.name)
 
         while not Tasks.shutdown:
