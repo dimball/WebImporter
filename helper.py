@@ -17,7 +17,34 @@ class Client():
         self.ip = ip
         self.port = port
         self.Tasks = Tasks
-        self.m_send(self.m_create_data("/syncserver/v1/server/register",self.Tasks.WorkData["serverport"]))
+        self.connected = False
+        try:
+            logging.debug("Attempting to register on sync server at %s:%s",self.Tasks.WorkData["syncserver_ip"],self.Tasks.WorkData["syncserver_port"])
+            self.m_send(self.m_create_data("/syncserver/v1/server/register",self.Tasks.WorkData["local_serverport"]))
+            self.connected = True
+        except:
+            logging.debug("Sync server at %s:%s is not reachable. Disabling syncserver support for this session",self.Tasks.WorkData["syncserver_ip"],self.Tasks.WorkData["syncserver_port"])
+            self.connected = False
+        if self.connected == True:
+            logging.debug("Connected to sync server at: %s:%s",self.Tasks.WorkData["syncserver_ip"],self.Tasks.WorkData["syncserver_port"])
+
+    def m_IsConnected(self):
+        try:
+            self.response = self.m_send(self.m_create_data("/syncserver/v1/server/isconnected"))
+            self.response = json.loads(self.response)
+            if self.response["status"] == "OK":
+                self.connected = True
+                return True
+            else:
+                self.connected = False
+                return False
+        except:
+            self.connected = False
+            return False
+
+
+
+
     def m_SerialiseSyncTasks(self):
         self.output = []
         for ID in self.Tasks.Order:
@@ -25,7 +52,11 @@ class Client():
                 self.TaskData = {}
                 self.TaskData["ID"] = ID
                 self.TaskData["Data"] = {}
-                self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].progress
+                if self.Tasks.Jobs[ID].type == "local":
+                    self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].GetCurrentProgress()
+                else:
+                    self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].progress
+
                 self.TaskData["Data"]["metadata"] = self.Tasks.Jobs[ID].metadata
                 self.output.append(self.TaskData)
         return json.dumps(self.output)
@@ -46,12 +77,13 @@ class Client():
         self.data["payload"] = payload
         return json.dumps(self.data)
 
-    def m_send(self, payload):
+    def m_send(self, payload, bDebug=False):
         # SOCK_STREAM == a TCP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #sock.setblocking(0)  # optional non-blocking
         self.sock.connect((self.ip, int(self.port)))
-        logging.debug("sending data => %s", (payload))
+        if bDebug:
+            logging.debug("sending data => %s", (payload))
         try:
             self.sock.send(bytes(payload, 'utf8'))
         except:
@@ -66,7 +98,7 @@ class Client():
             if len(self.reply)>0:
                 return self.reply
         else:
-            print("request timed out")
+            logging.debug("request timed out")
 
         if self.sock != None:
             self.sock.close()

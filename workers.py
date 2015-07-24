@@ -2,104 +2,12 @@ import os
 import shutil
 import time
 import helper as hfn
-import fileprogressmonitor as FileMonitor
 import threading
 import queue
 import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
-# class c_PreTaskWorker(threading.Thread,hfn.c_HelperFunctions):
-#     def __init__(self,Data):
-#         threading.Thread.__init__(self)
-#         self.Data = Data
-#         self.dict_Data = self.Data.WorkData
-#         self.dict_Jobs = self.Data.Jobs
-#         self.ID = self.Data["ID"]
-#         self.command = self.Data["command"]
-#         print("Running command:%s", self.command)
-#     def m_expand_files(self):
-#         self.payload = self.Data["payload"]
-#         self.dict_Jobs[self.ID].state = "busy"
-#         self.dict_Jobs[self.ID].filelist = self.FileExpand(self.ID,self.payload)
-#         self.dict_Jobs[self.ID].state = "ready"
-#     def m_restart_task(self):
-#         self.task_queue = self.Data["task_queue"]
-#         if self.ID in self.dict_Jobs:
-#             self.dict_Jobs[self.ID].active = True
-#             self.dict_Jobs[self.ID].workerlist = {}
-#             self.dict_Jobs[self.ID].ResetFileStatus()
-#             self.dict_Jobs[self.ID].progress = -1
-#             for folder in os.listdir(self.dict_Data["sTargetDir"]+ self.ID):
-#                 self.fullpath = self.dict_Data["sTargetDir"] + self.ID + "/" + folder + "/"
-#                 if os.path.isdir(self.fullpath):
-#                     shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
-#                 else:
-#                     logging.debug("%s is not a folder",self.fullpath)
-#             self.dict_Jobs[self.ID].progress = self.dict_Jobs[self.ID].GetCurrentProgress()
-#             self.task_queue.put(self.dict_Jobs[self.ID])
-#     def m_remove_task(self):
-#         self.task_queue = self.Data["task_queue"]
-#         if self.ID in self.dict_Jobs:
-#             self.fullpath = self.dict_Data["sTargetDir"] + self.ID
-#             if os.path.isdir(self.fullpath):
-#                 shutil.rmtree(os.path.normpath(self.fullpath),onerror=self.remove_readonly)
-#                 logging.debug("Removing completed Job:%s",self.ID)
-#             else:
-#                 logging.debug("%s is not a folder",self.fullpath)
-#
-#         del self.dict_Jobs[self.ID]
-#     def m_modify_task(self):
-#         self.incomingFiles = self.FileExpand(self.ID, self.Payload)
-#         self.aDeleteList = []
-#         self.dict_Data[self.ID].state = "busy"
-#         if len(self.dict_Data[self.ID].filelist) < len(self.incomingFiles):
-#             #if there is less files in the current list then iterate over the current list against the incoming files. If file in current list
-#             #exist in incoming files, then keep file. If file in current list does not exist in incoming list, then mark for deletion.
-#
-#             for file,state in self.dict_Data[self.ID].filelist:
-#                 if file in self.incomingFiles == False:
-#                     self.aDeleteList.append(file)
-#                 else:
-#                     self.incomingFiles[file] = self.dict_Data[self.ID].filelist[file]
-#             #delete files
-#
-#             for delfile in self.aDeleteList:
-#                 os.remove(delfile)
-#                 #also remove folder if the folder is empty.
-#
-#             self.dict_Data[self.ID].filelist = self.incomingFiles
-#         else:
-#             #if there are more files in the current list than in the incoming list, then iterate over the incoming list. If the file in the incoming list
-#             #exists in the current list AND the file in the current list has been marked as copied, then keep the file. If it does not exists
-#
-#             for file,state in self.incomingFiles:
-#                 self.dict_Data[self.ID].filelist[file].delete = True
-#                 if file in self.incomingFiles == True and state["copied"] == True:
-#                     self.dict_Data[self.ID].filelist[file].delete = False
-#                     self.incomingFiles[file] = self.dict_Data[self.ID].filelist[file]
-#
-#             for file, state in self.dict_Data[self.ID].filelist:
-#                 if state["delete"] == True:
-#                     os.remove(file)
-#
-#             self.dict_Data[self.ID].filelist = self.incomingFiles
-#
-#         self.dict_Data[self.ID].state = "ready"
-#         if os.path.exists(self.dict_Data["sTargetDir"] + self.ID):
-#             self.dict_Data[self.ID].state = "busy"
-#             shutil.rmtree(self.dict_Data["sTargetDir"] + self.ID)
-#             self.dict_Data[self.ID].state = "ready"
-#     def run(self):
-#         if self.command == "restart_task":
-#             self.m_restart_task()
-#         elif self.command == "expand_files":
-#             self.m_expand_files()
-#         elif self.command == "modify_task":
-#             self.m_modify_task()
-#         elif self.command == "remove_task":
-#
-#             self.m_remove_task()
 class c_CopyWorker(threading.Thread):
     def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand):
         threading.Thread.__init__(self)
@@ -153,13 +61,11 @@ class c_CopyWorker(threading.Thread):
         try:
             fsrc = open(sourcefile, 'rb')
             fdst = open(destinationfile, 'wb')
-            keepGoing = True
             self.buffer_size = min(buffer_size,filesize)
             if(buffer_size == 0):
                 buffer_size = 1024
             count = 0
-            #
-            while keepGoing:
+            while True:
                 # Read blocks of size 2**20 = 1048576
                 # Depending on system may require smaller
                 #  or could go larger...
@@ -180,9 +86,8 @@ class c_CopyWorker(threading.Thread):
             if fsrc:
                 fsrc.close()
 
-            if(perserveFileDate):
+            if perserveFileDate:
                 shutil.copystat(sourcefile, destinationfile)
-
     def run(self):
         while True:
             self.next_task = self.worker_queue.get()
@@ -200,7 +105,7 @@ class c_CopyWorker(threading.Thread):
                 if self.dict_Jobs[self.ID].filelist[self.srcfile].size < (1024*1024*self.dict_Data["large_file_threshold"]):
                     self.bContinue = True
 
-            if self.bContinue == True:
+            if self.bContinue:
                 self.head,self.tail = os.path.splitdrive(self.srcfile)
                 self.dstfile = os.path.normpath(self.dict_Data["sTargetDir"] + self.ID + "/" + self.tail)
 
@@ -209,25 +114,21 @@ class c_CopyWorker(threading.Thread):
                     #logging.debug('%s ==> %s', self.srcfile, (self.dstfile))
                     if self.worker_name in self.dict_Jobs[self.ID].workerlist == False:
                         self.dict_Jobs[self.ID].workerlist[self.worker_name] = {}
-
-                    #self.pmon = FileMonitor.c_FileProgressMonitor(self.srcfile,self.dstfile, self.dict_Jobs, self.ID, self.worker_name)
-                    #self.pmon.start()
                     #self.copyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size)
                     self.customCopyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size, self.dict_Jobs, self.ID, self.worker_name)
                     if self.dict_Jobs[self.ID].active == False:
 
                         self.worker_queue.task_done()
-                        #self.pmon.join()
                         break
 
                     self.dict_Jobs[self.ID].filelist[self.srcfile].copied = True
                     #self.pmon.join()
                     self.worker_queue.task_done()
                 else:
-                    print("%s does not exist",self.srcfile)
+                    logging.debug("%s does not exist:%s",self.srcfile)
 
                 self.result_queue.put(self.next_task)
-                if self.dict_Jobs[self.ID].active == False:
+                if not self.dict_Jobs[self.ID].active:
                     logging.debug("Aborting (setting task to inactive, breaking out of thread)")
                     break
 
@@ -319,9 +220,9 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                 self.OldQueueSize = 0
                 while True:
                     self.CurrentQueueSize = self.result_queue.qsize()
-                    #print(self.CurrentQueueSize)
+
                     if self.dict_Jobs[self.ID].active == False:
-                        logging.debug("Pausing job:%s ",self.ID)
+                        logging.debug("Pausing job:%s ", self.ID)
                         while not self.worker_queue.empty():
                             self.worker_queue.get()
                         while not self.large_worker_queue.empty():
@@ -343,8 +244,13 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     if self.CurrentQueueSize > self.OldQueueSize:
                         self.OldQueueSize = self.CurrentQueueSize
                         #send progress to the sync server here?
+                        #the tasks processed here are only the local ones.
 
-
+                        if self.Tasks.syncserver_client.connected:
+                            self.Payload = {}
+                            self.Payload["ID"] = self.ID
+                            self.Payload["progress"] = self.dict_Jobs[self.ID].progress
+                            self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
                         #write out data each time a file has been processed
                         self.WriteJob(self.Tasks,self.ID)
 

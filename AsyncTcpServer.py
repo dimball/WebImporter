@@ -49,12 +49,9 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         '''
         When creating a task, also send the data to the sync server. Send the ID here. When metadata is created, then send the ID with the metadata so
         that other clients can see this as well.
-
-
-
         '''
-        Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',Tasks.syncserver_client.m_SerialiseSyncTasks()))
-
+        if Tasks.syncserver_client.connected:
+            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',Tasks.syncserver_client.m_SerialiseSyncTasks()))
         self.WriteJob(Tasks,ID)
         #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
     def m_put_tasks_on_queue(self):
@@ -71,10 +68,10 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             Tasks.task_queue.get()
         #add task to queue in the right order
         for ID in Tasks.Order:
-            logging.debug("Putting task %s on queue", ID)
-            Tasks.Jobs[ID].active = self.OldStatus[ID]
-            Tasks.task_queue.put(Tasks.Jobs[ID])
-
+            if Tasks.Jobs[ID].type == "local":
+                logging.debug("Putting task %s on queue", ID)
+                Tasks.Jobs[ID].active = self.OldStatus[ID]
+                Tasks.task_queue.put(Tasks.Jobs[ID])
     def m_activate_queue(self):
         for i in range(Tasks.WorkData["Line_Managers"]):
             if len(Tasks.LineManagers) < Tasks.WorkData["Line_Managers"]:
@@ -98,16 +95,16 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                 Tasks.LineManagers.remove(p)
         else:
             logging.debug("Line managers already stopped")
-
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
                 if Tasks.Jobs[ID].active == False:
-                    if Tasks.Jobs[ID].IsComplete() == False:
-                        Tasks.Jobs[ID].active = True
-                        Tasks.Jobs[ID].workerlist = {}
-                        Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                        logging.debug("Activating task:%s", ID)
+                    if Tasks.Jobs[ID].type == "local":
+                        if Tasks.Jobs[ID].IsComplete() == False:
+                            Tasks.Jobs[ID].active = True
+                            Tasks.Jobs[ID].workerlist = {}
+                            Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
+                            logging.debug("Activating task:%s", ID)
                 else:
                     self.Output["status"] = "Task already started"
                     self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
@@ -194,7 +191,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Output["status"] = "Paused job " + ID
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         self.WriteJob(Tasks,ID)
-
     def m_restart_task(self,ID):
         self.Output["status"] = "test"
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
@@ -224,18 +220,23 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.Output["status"] = "Task does not exist"
             self.request.sendall(bytes(self.Output,'utf-8'))
     def m_setpriority(self,Payload):
-        logging.debug("Setting new priorities")
+        logging.debug("************Setting new priorities*************************")
         Tasks.Order = Payload
         self.counter = 1
         for ID in Tasks.Order:
             Tasks.Jobs[ID].order = self.counter
-            self.WriteJob(Tasks,ID)
+            if Tasks.Jobs[ID].type == "local":
+                self.WriteJob(Tasks,ID)
             self.counter += 1
         self.counter = 0
         for ID in Tasks.Order:
-            logging.debug("%s:%s",self.counter,ID)
+            logging.debug("[%s] Order:%s | ID:%s",Tasks.Jobs[ID].type,self.counter,ID)
             self.counter += 1
-        self.m_put_tasks_on_queue()
+
+        #only do this if the queue is active
+
+        if len(Tasks.LineManagers)>0:
+            self.m_put_tasks_on_queue()
     def m_getpriority(self):
 
         self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/get_priority'))
@@ -246,8 +247,6 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             Tasks.Order.append(Data["ID"])
             Tasks.Jobs[Data["ID"]].order = self.counter
             self.counter += 1
-
-
     def m_resume_job(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].active == False:
@@ -266,7 +265,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.ID = ID
         self.Payload = Payload
 
-        if Tasks.Jobs[ID].active == False:
+        if not Tasks.Jobs[ID].active and Tasks.Jobs[ID].type == "local":
             logging.debug("Getting files and storing their sizes")
             self.incomingFiles = self.FileExpand(self.ID, self.Payload)
             Tasks.Jobs[self.ID].state = "busy"
@@ -310,7 +309,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                         Tasks.Jobs[self.ID].filelist[file].delete = False
 
                 for file in Tasks.Jobs[self.ID].filelist:
-                    if Tasks.Jobs[self.ID].filelist[file].delete == True:
+                    if Tasks.Jobs[self.ID].filelist[file].delete:
                         self.head,self.tail = os.path.splitdrive(file)
                         self.dstfile = os.path.normpath(Tasks.WorkData["sTargetDir"] + self.ID + "/" + self.tail)
                         if os.path.exists(self.dstfile):
@@ -329,6 +328,28 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             Tasks.Jobs[self.ID].active = False
             logging.debug("modified task: %s",self.ID)
             self.WriteJob(Tasks,self.ID)
+    def m_process_tasks_from_syncserver(self, Payload):
+
+        if len(Payload)>0:
+            Tasks.Order = []
+            self.counter = 1
+            for Data in Payload:
+                Tasks.Order.append(Data["ID"])
+                if not Data["ID"] in Tasks.Jobs:
+                    Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
+                    Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
+                Tasks.Jobs[Data["ID"]].order = self.counter
+                Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
+                Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
+                self.counter += 1
+
+            if Data["report"]:
+                for ID in Tasks.Order:
+                    if Tasks.Jobs[ID].type == "local":
+                        logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
+                    else:
+                        logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
+
     def setup(self):
         #print("Setting up request")
         self.Data = {}
@@ -360,29 +381,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         elif self.Command == "/webimporter/v1/global/queue/put":
             self.data = json.loads(self.Payload)
             logging.debug("Received tasks from syncserver:%s", len(self.data))
-
-
-
-            if len(self.data)>0:
-                Tasks.Order = []
-                self.counter = 1
-                for Data in self.data:
-                    Tasks.Order.append(Data["ID"])
-                    if not Data["ID"] in Tasks.Jobs:
-                        Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
-                        Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
-                    Tasks.Jobs[Data["ID"]].order = self.counter
-                    Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
-                    Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
-                    self.counter += 1
-                #self.m_getpriority()
-
-                for ID in Tasks.Order:
-
-                    if Tasks.Jobs[ID].type == "local":
-                        logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
-                    else:
-                        logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
+            self.m_process_tasks_from_syncserver(self.data)
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
@@ -396,8 +395,16 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.ID = self.Payload["ID"]
             self.Payload = self.Payload["Payload"]
             self.m_modify_task(self.ID,self.Payload)
-        elif self.Command == "/webimporter/v1/queue/set_priority":
+        elif self.Command == "/webimporter/v1/local/queue/set_priority":
             self.m_setpriority(self.Payload)
+        elif self.Command == "/webimporter/v1/global/queue/set_priority":
+            #send this information to the sync server. The server will then notify all registered clients and invoke the local set priority command with the assosciated payload.
+            if Tasks.syncserver_client.connected:
+                Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/set_priority", self.Payload))
+            else:
+                logging.debug("Sync server not available. Setting priority locally only")
+                self.m_setpriority(self.Payload)
+
         elif self.Command == "/webimporter/v1/global/queue/get_priority":
             self.m_getpriority()
         elif self.Command == "/webimporter/v1/queue/activate":
@@ -429,6 +436,7 @@ class server(hfn.c_HelperFunctions):
         Tasks.WorkData = self.m_ReadConfig()
 
         Tasks.syncserver_client = hfn.Client(Tasks.WorkData["syncserver_ip"],Tasks.WorkData["syncserver_port"],Tasks)
+
         #send currentjobs to the sync server?
 
     def m_ReadConfig(self):
@@ -438,31 +446,23 @@ class server(hfn.c_HelperFunctions):
         self.dict_WorkData["Line_Managers"] = int(self.config.find("lineworkers").text)
         self.dict_WorkData["CopyWorkers_Per_Line"] = int(self.config.find("copyworkers").text)
         self.dict_WorkData["sTargetDir"] = self.config.find("path").text
-        self.dict_WorkData["serverport"] = int(self.config.find("serverport").text)
+        self.dict_WorkData["local_serverport"] = int(self.config.find("local_serverport").text)
         self.dict_WorkData["Num_TCP_port"] = int(self.config.find("numtcpport").text)
         self.dict_WorkData["large_file_threshold"] = int(self.config.find("largefilethreshold").text)
         self.dict_WorkData["syncserver_ip"] = self.config.find("syncserver_ip").text
         self.dict_WorkData["syncserver_port"] = self.config.find("syncserver_port").text
         return self.dict_WorkData
-    def m_ReadJobList(self):
-        logging.debug("Init TCP server: Reading existing jobs from %s", Tasks.WorkData["sTargetDir"])
+    def m_ReadJobList(self, bReport=True):
+        logging.debug("Init local TCP server: Reading existing local jobs from %s", Tasks.WorkData["sTargetDir"])
         self.aFiles = self.get_xmljobs(Tasks)
-
         self.filecounter = 0
 
         for f in self.aFiles:
             self.tree = ET.ElementTree(file=f)
             self.root = self.tree.getroot()
-
-            print(self.root.attrib["ID"],int(self.root.attrib["order"]))
             Tasks.Jobs[self.root.attrib["ID"]] = dataclasses.c_Task(self.root.attrib["ID"])
             Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
             Tasks.Jobs[self.root.attrib["ID"]].active = self.StringToBool(self.root.attrib["active"])
-
-            #the order of the local files is stored here.
-
-
-
             Tasks.Jobs[self.root.attrib["ID"]].order = int(self.root.attrib["order"])
 
             self.bIsActive = True
@@ -477,9 +477,10 @@ class server(hfn.c_HelperFunctions):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
-
-            Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
-
+            if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
+                Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
+            else:
+                Tasks.Jobs[self.root.attrib["ID"]].progress = 0.0
 
         self.PreviousID = None
         Tasks.Order = []
@@ -502,19 +503,19 @@ class server(hfn.c_HelperFunctions):
 
             self.PreviousID = Tasks.Jobs[ID]
 
-        for ID in Tasks.Order:
-            self.aIncompleteFiles = 0
-            if ID in Tasks.Jobs:
-                for file in Tasks.Jobs[ID].filelist:
-                    if Tasks.Jobs[ID].filelist[file].copied == True:
-                        self.aIncompleteFiles += 1
-                if Tasks.Jobs[ID].type == "local":
-                    logging.debug("Loading LOCAL task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
-                else:
-                    logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, (Tasks.Jobs[ID].progress))
+        if bReport:
+            for ID in Tasks.Order:
+                self.aIncompleteFiles = 0
+                if ID in Tasks.Jobs:
+                    for file in Tasks.Jobs[ID].filelist:
+                        if Tasks.Jobs[ID].filelist[file].copied == True:
+                            self.aIncompleteFiles += 1
+                    if Tasks.Jobs[ID].type == "local":
+                        logging.debug("Loading LOCAL task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
+
     def run(self):
         # Port 0 means to select an arbitrary unused port
-        HOST, PORT = "localhost",  Tasks.WorkData["serverport"]
+        HOST, PORT = "localhost",  Tasks.WorkData["local_serverport"]
         server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
         ip, port = server.server_address
         # Start a thread with the server -- that thread will then start one
@@ -525,21 +526,11 @@ class server(hfn.c_HelperFunctions):
         server_thread.start()
         server_thread.name = "Main_Server"
         #read the jobs locally first
-        self.m_ReadJobList()
-
+        self.m_ReadJobList(not Tasks.syncserver_client.connected)
         #send all the jobs that has been read locally to the sync server.
-        Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put', Tasks.syncserver_client.m_SerialiseSyncTasks()))
-
-        #get the actual order of the files from the sync server
-        # self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/get_priority'))
-        # self.data = json.loads(self.response)
-        # if len(self.data)>0:
-        #     Tasks.Order = []
-        #     self.counter = 0
-        #     for Data in self.data:
-        #         Tasks.Order.append(Data["ID"])
-        #         Tasks.Jobs[Data["ID"]].order = self.counter
-        #         self.counter += 1
+        if Tasks.syncserver_client.connected:
+            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put', Tasks.syncserver_client.m_SerialiseSyncTasks()))
+        #the put task on the sync server will notify all registered clients about the tasks sent from this client. This also includes the order of the tasks.
 
         logging.debug("Server loop running in thread:%s", server_thread.name)
 

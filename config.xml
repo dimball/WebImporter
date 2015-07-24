@@ -2,7 +2,7 @@
 <Config>
     <lineworkers>1</lineworkers>
     <copyworkers>10</copyworkers>
-    <serverport>9090</serverport>
+    <local_serverport>9090</local_serverport>
 
     <syncserver_ip>localhost</syncserver_ip>
     <syncserver_port>8908</syncserver_port>
