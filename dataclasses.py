@@ -6,6 +6,8 @@ class c_file():
         self.delete = False
         self.uploaded = False
         self.size = size
+
+
 class c_Task():
     def __init__(self,ID):
         self.order = 0
@@ -16,8 +18,10 @@ class c_Task():
         self.progress = 0
         self.workerlist = {}
         self.filelist = {}
+        self.filelistOrder = []
         self.metadata = {}
         self.type = "local"
+
 
     def GetCurrentProgress(self):
         self.CopiedFiles = 0
@@ -39,14 +43,20 @@ class c_Task():
             self.filelist[f].uploaded = False
 
         self.GetCurrentProgress()
-
-class c_data():
+class c_basedata():
     def __init__(self):
-        self.lock = False
         self.Jobs = {}
         self.Order = []
-        self.task_queue = queue.Queue()
         self.WorkData = {}
         self.shutdown = False
+class c_SyncServerData(c_basedata):
+    def __init__(self):
+        c_basedata.__init__(self)
+        self.clientlist = []
+
+class c_ServerData(c_basedata):
+    def __init__(self):
+        c_basedata.__init__(self)
+        self.task_queue = queue.Queue()
         self.LineManagers = []
         self.syncserver_client = None
