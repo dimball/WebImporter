@@ -157,22 +157,23 @@ def CheckStatus():
                 if job in jobs_lookup:
                     response = client(CreateData('/webimporter/v1/queue/status',job))
                     #print(response)
-                    response = json.loads(response)
+                    if response != None:
+                        response = json.loads(response)
 
-                    if response["status"] == "Job Complete":
-                         del jobs_lookup[job]
-                         print("Job Complete")
-                    else:
-                        print("Task:" + str(response["status"]))
-                        if "worker" in response:
-                            if len(response["worker"]) > 0:
+                        if response["status"] == "Job Complete":
+                             del jobs_lookup[job]
+                             print("Job Complete")
+                        else:
+                            print("Task:" + str(response["status"]))
+                            if "worker" in response:
+                                if len(response["worker"]) > 0:
 
-                                for worker,progress in response["worker"].items():
-                                    if len(progress) > 0:
-                                        print("\t\t" + worker)
-                                        for p in progress:
-                                            for file,progress in p.items():
-                                                print("\t\t\t\t" + worker + " : " + file + " : " + str(progress))
+                                    for worker,progress in response["worker"].items():
+                                        if len(progress) > 0:
+                                            print("\t\t" + worker)
+                                            for p in progress:
+                                                for file,progress in p.items():
+                                                    print("\t\t\t\t" + worker + " : " + file + " : " + str(progress))
             time.sleep(0.5)
 
         print("ended")
@@ -311,18 +312,20 @@ if __name__ == "__main__":
     #create_copytask()
     #create_copytask()
     create_copytask()
-    # startqueue()
-    # put_tasks_on_queue()
-    # activate_queue()
+    startqueue()
+    put_tasks_on_queue()
+    activate_queue()
     #deactivate_queue()
     # time.sleep(5)
-    # pausequeue()
+    #pausequeue()
     #
-    # #resumequeue()
+    #resumequeue()
     #
     # setpriority([])
     # time.sleep(2)
-    # setpriority([])
+    #CheckStatus()
+
+    #setpriority([])
     #deactivate_queue()
     #removeincompletetasks()
     #removecompleted()
@@ -367,6 +370,6 @@ if __name__ == "__main__":
     #modify(3)
 
 
-    #CheckStatus()
+
 
     #shutdown()

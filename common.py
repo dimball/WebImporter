@@ -14,72 +14,82 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 class c_HelperFunctions():
-    def m_process_tasks_from_syncserver(self, Payload, Tasks):
-        self.Payload = json.loads(Payload)
+    def StringToBool(self,input):
+        if input == "True":
+            return True
+        else:
+            return False
+    def m_show_tasks(self, Tasks):
+        for ID in Tasks.Order:
+            logging.debug("[%s] ID:%s Files:%s Progress:%s", Tasks.Jobs[ID].type, ID, len(Tasks.Jobs[ID].filelist), Tasks.Jobs[ID].progress )
 
-        if len(self.Payload)>0:
-            Tasks.Order = []
-            self.counter = 1
+    # def m_process_tasks_from_syncserver(self, Payload, Tasks):
+    #     self.Payload = json.loads(Payload)
+    #
+    #     if len(self.Payload)>0:
+    #         Tasks.Order = []
+    #         self.counter = 1
+    #
+    #         for Data in self.Payload:
+    #
+    #             Tasks.Order.append(Data["ID"])
+    #             if not Data["ID"] in Tasks.Jobs:
+    #                 Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
+    #                 print(Data["Data"]["type"])
+    #                 Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
+    #             Tasks.Jobs[Data["ID"]].order = self.counter
+    #             Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
+    #             Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
+    #             self.counter += 1
+    #
+    #         # if Data["report"]:
+    #         for ID in Tasks.Order:
+    #             if Tasks.Jobs[ID].type == "local":
+    #                 logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
+    #             else:
+    #                 logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
 
-            for Data in self.Payload:
-
-                Tasks.Order.append(Data["ID"])
-                if not Data["ID"] in Tasks.Jobs:
-                    Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
-                    print(Data["Data"]["type"])
-                    Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
-                Tasks.Jobs[Data["ID"]].order = self.counter
-                Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
-                Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
-                self.counter += 1
-
-            # if Data["report"]:
-            for ID in Tasks.Order:
-                if Tasks.Jobs[ID].type == "local":
-                    logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
-                else:
-                    logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
-
+    # def m_SerializeTask(self,Task,bReport=True):
+    #     self.output = []
+    #     self.TaskData = {}
+    #     self.TaskData["ID"] = Task.TaskID
+    #     self.TaskData["report"] = bReport
+    #     self.TaskData["Data"] = {}
+    #     if Task.type == "local":
+    #         self.TaskData["Data"]["progress"] = Task.GetCurrentProgress()
+    #     else:
+    #         self.TaskData["Data"]["progress"] = Task.progress
+    #
+    #     self.TaskData["Data"]["type"] = "global"
+    #     self.TaskData["Data"]["metadata"] = Task.metadata
+    #     self.TaskData["Data"]["filelist"] = {}
+    #     self.TaskData["Data"]["filelistOrder"] = Task.filelistOrder
+    #     for file in Task.filelistOrder:
+    #         self.FileData = {}
+    #         self.FileData["progress"] = Task.filelist[file].progress
+    #         self.FileData["copied"] = Task.filelist[file].copied
+    #         self.FileData["delete"] = Task.filelist[file].delete
+    #         self.FileData["size"] = Task.filelist[file].size
+    #         self.FileData["uploaded"] = Task.filelist[file].uploaded
+    #         self.TaskData["Data"]["filelist"][file] = self.FileData
+    #
+    #     self.output.append(self.TaskData)
+    #     return self.output
     def m_reply(self,payload,sock):
-        self.payload = json.dumps(payload)
+        #####payload comes in as a dictionary. NOT AS A STRING####
 
+        self.payload = json.dumps(payload)
         self.SizeOfData = len(self.payload)
         self.payload = str(self.SizeOfData) + "|" + self.payload
        #logging.debug("Replying with = %s",self.payload)
         sock.sendall(bytes(self.payload,encoding='utf8'))
-    def m_SerializeTask(self,Task,bReport=True):
-        self.output = []
-        self.TaskData = {}
-        self.TaskData["ID"] = Task.TaskID
-        self.TaskData["report"] = bReport
-        self.TaskData["Data"] = {}
-
-
-        if Task.type == "local":
-            self.TaskData["Data"]["progress"] = Task.GetCurrentProgress()
-        else:
-            self.TaskData["Data"]["progress"] = Task.progress
-
-        self.TaskData["Data"]["type"] = "global"
-        self.TaskData["Data"]["metadata"] = Task.metadata
-        self.TaskData["Data"]["filelist"] = {}
-        self.TaskData["Data"]["filelistOrder"] = Task.filelistOrder
-        for file in Task.filelistOrder:
-            self.FileData = {}
-            self.FileData["progress"] = Task.filelist[file].progress
-            self.FileData["copied"] = Task.filelist[file].copied
-            self.FileData["delete"] = Task.filelist[file].delete
-            self.FileData["size"] = Task.filelist[file].size
-            self.FileData["uploaded"] = Task.filelist[file].uploaded
-            self.TaskData["Data"]["filelist"][file] = self.FileData
-
-        self.output.append(self.TaskData)
-        return json.dumps(self.output)
-
-    def m_SerialiseTaskList(self, TaskIDs, bReport=True):
-
-        self.output = []
-        for Task in TaskIDs:
+    def m_SerialiseTaskList(self, aTaskJobs, Tasks, bReport=True):
+        #this way we can add some extra information into the payload
+        self.Data = {}
+        self.Data["Order"] = Tasks.Order
+        logging.debug("Serializing %s tasks", len(aTaskJobs))
+        self.Data["TaskList"] = []
+        for Task in aTaskJobs:
             self.TaskData = {}
             self.TaskData["ID"] = Task.TaskID
             self.TaskData["report"] = bReport
@@ -103,42 +113,66 @@ class c_HelperFunctions():
                 self.FileData["uploaded"] = Task.filelist[file].uploaded
                 self.TaskData["Data"]["filelist"][file] = self.FileData
 
-            self.output.append(self.TaskData)
-        return json.dumps(self.output)
-    def m_SerialiseSyncTasks(self, Tasks, bReport=True):
-        self.Tasks = Tasks
-        self.output = []
-        for ID in self.Tasks.Order:
-            if ID in self.Tasks.Jobs:
-                self.TaskData = {}
-                self.TaskData["ID"] = ID
-                self.TaskData["report"] = bReport
+            self.Data["TaskList"].append(self.TaskData)
+        return self.Data
+    def m_deSerializeTaskList(self, Payload, Tasks):
+        #converts the incoming data from json format into the internal data structure of classes
+        Tasks.Order = Payload["Order"]
+        logging.debug("deSerializing %s tasks", len(Payload["TaskList"]))
+        for Task in Payload["TaskList"]:
+            if not Task["ID"] in Tasks.Jobs:
+                Tasks.Jobs[Task["ID"]] = dataclasses.c_Task(Task["ID"])
+                Tasks.Jobs[Task["ID"]].type = Task["Data"]["type"]
 
-                self.TaskData["Data"] = {}
+            Tasks.Jobs[Task["ID"]].progress = Task["Data"]["progress"]
+            Tasks.Jobs[Task["ID"]].metadata = Task["Data"]["metadata"]
+            Tasks.Jobs[Task["ID"]].filelistOrder = Task["Data"]["filelistOrder"]
 
-                if self.Tasks.Jobs[ID].type == "local":
-                    self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].GetCurrentProgress()
-                else:
-                    self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].progress
-                self.TaskData["Data"]["type"] = "global"
-                self.TaskData["Data"]["metadata"] = self.Tasks.Jobs[ID].metadata
-                self.TaskData["Data"]["filelist"] = {}
-                self.TaskData["Data"]["filelistOrder"] = self.Tasks.Jobs[ID].filelistOrder
-                for file in self.Tasks.Jobs[ID].filelistOrder:
-                    self.FileData = {}
-                    self.FileData["progress"] = self.Tasks.Jobs[ID].filelist[file].progress
-                    self.FileData["copied"] = self.Tasks.Jobs[ID].filelist[file].copied
-                    self.FileData["delete"] = self.Tasks.Jobs[ID].filelist[file].delete
-                    self.FileData["size"] = self.Tasks.Jobs[ID].filelist[file].size
-                    self.FileData["uploaded"] = self.Tasks.Jobs[ID].filelist[file].uploaded
-                    self.TaskData["Data"]["filelist"][file] = self.FileData
 
-                self.output.append(self.TaskData)
-        return json.dumps(self.output)
+            for file in Tasks.Jobs[Task["ID"]].filelistOrder:
+                Tasks.Jobs[Task["ID"]].filelist[file] = dataclasses.c_file(Task["Data"]["filelist"][file]["size"])
+                Tasks.Jobs[Task["ID"]].filelist[file].progress = Task["Data"]["filelist"][file]["progress"]
+                Tasks.Jobs[Task["ID"]].filelist[file].copied = self.StringToBool(Task["Data"]["filelist"][file]["progress"])
+                Tasks.Jobs[Task["ID"]].filelist[file].delete = self.StringToBool(Task["Data"]["filelist"][file]["delete"])
+                Tasks.Jobs[Task["ID"]].filelist[file].uploaded = self.StringToBool(Task["Data"]["filelist"][file]["uploaded"])
+
+            logging.debug("deSerialized task:%s", Task["ID"])
+
+    # def m_SerialiseSyncTasks(self, Tasks, bReport=True):
+    #     self.Tasks = Tasks
+    #     self.output = []
+    #     for ID in self.Tasks.Order:
+    #         if ID in self.Tasks.Jobs:
+    #             self.TaskData = {}
+    #             self.TaskData["ID"] = ID
+    #             self.TaskData["report"] = bReport
+    #
+    #             self.TaskData["Data"] = {}
+    #
+    #             if self.Tasks.Jobs[ID].type == "local":
+    #                 self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].GetCurrentProgress()
+    #             else:
+    #                 self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].progress
+    #             self.TaskData["Data"]["type"] = "global"
+    #             self.TaskData["Data"]["metadata"] = self.Tasks.Jobs[ID].metadata
+    #             self.TaskData["Data"]["filelist"] = {}
+    #             self.TaskData["Data"]["filelistOrder"] = self.Tasks.Jobs[ID].filelistOrder
+    #             for file in self.Tasks.Jobs[ID].filelistOrder:
+    #                 self.FileData = {}
+    #                 self.FileData["progress"] = self.Tasks.Jobs[ID].filelist[file].progress
+    #                 self.FileData["copied"] = self.Tasks.Jobs[ID].filelist[file].copied
+    #                 self.FileData["delete"] = self.Tasks.Jobs[ID].filelist[file].delete
+    #                 self.FileData["size"] = self.Tasks.Jobs[ID].filelist[file].size
+    #                 self.FileData["uploaded"] = self.Tasks.Jobs[ID].filelist[file].uploaded
+    #                 self.TaskData["Data"]["filelist"][file] = self.FileData
+    #
+    #             self.output.append(self.TaskData)
+    #     return self.output
     def m_receive_all(self, sock):
         self.HeaderLength = 32
         self.PackageLength = 1024
         self.data = ""
+
         self.data = sock.recv(self.HeaderLength).decode('utf8')
 
         if self.data != "":
@@ -176,11 +210,7 @@ class c_HelperFunctions():
                 return True
 
         return self.bIsFound
-    def StringToBool(self,input):
-        if input == "True":
-            return True
-        else:
-            return False
+
     def remove_readonly(self,fn, path, excinfo):
         try:
             os.chmod(path, stat.S_IWRITE)

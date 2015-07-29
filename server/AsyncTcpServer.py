@@ -19,6 +19,7 @@ logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
 
+
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunctions):
     def m_create_task(self, Payload):
         self.ID = str(uuid.uuid4())
@@ -51,7 +52,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         that other clients can see this as well.
         '''
         if Tasks.syncserver_client.connected:
-            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',self.m_SerialiseSyncTasks(Tasks)))
+            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',self.m_SerialiseTaskList([Tasks.Jobs[self.ID]], Tasks)))
         self.WriteJob(Tasks,self.ID)
         #self.request.sendall(bytes(json.dumps(self.Output), 'utf-8'))
     def m_put_tasks_on_queue(self):
@@ -107,17 +108,16 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
                             logging.debug("Activating task:%s", ID)
                 else:
                     self.Output["status"] = "Task already started"
-                    logging.debug("jfsdfsdfsdfsdfsdfe")
-                    Tasks.syncserver_client.m_reply(self.Output,self.request)
+#                    Tasks.syncserver_client.m_reply(self.Output,self.request)
             else:
                 self.Output["status"] = "Task is busy. Try again when it is ready"
-                logging.debug("jejejsdfsdfsdfe")
-                Tasks.syncserver_client.m_reply(self.Output,self.request)
+ #               logging.debug("jejejsdfsdfsdfe")
+ #               Tasks.syncserver_client.m_reply(self.Output,self.request)
 
         else:
-            logging.debug("jejeje")
+         #   logging.debug("jejeje")
             self.Output["status"] = "Task does not exist"
-            Tasks.syncserver_client.m_reply(self.Output,self.request)
+          #  Tasks.syncserver_client.m_reply(self.Output,self.request)
 
     def m_get_tasks(self):
         self.aJobs = []
@@ -347,10 +347,11 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         self.Output = {}
     def handle(self):
         #print("handling request")
-        self.buffersize = 1024*1024*5
-
         #self.data = self.request.recv(self.buffersize).decode('utf-8')
-        self.data = Tasks.syncserver_client.m_receive_all(self.request)
+
+        self.data = self.m_receive_all(self.request)
+
+
        # logging.debug(self.data)
         self.data = json.loads(self.data)
         self.Command = self.data["command"]
@@ -377,11 +378,14 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         elif self.Command == "/webimporter/v1/queue/task/get_all":
             ############################ GET TASK ############################
             self.m_get_tasks()
+        elif self.Command == "/webimporter/v1/global/queue/task/set_progress":
+            logging.debug("Received progress from syncserver:%s:%s", self.Payload["ID"], self.Payload["progress"])
+            Tasks.Jobs[self.Payload["ID"]].progress = self.Payload["progress"]
         elif self.Command == "/webimporter/v1/global/queue/put":
             ############################ PUT TASK ON GLOBAL LIST ############################
-            self.data = json.loads(self.Payload)
-            logging.debug("Received tasks from syncserver:%s", len(self.data))
-            self.m_process_tasks_from_syncserver(self.data, Tasks)
+            #self.data = json.loads(self.Payload)
+            logging.debug("Received tasks from syncserver:%s", len(self.Payload["TaskList"]))
+            self.m_deSerializeTaskList(self.data, Tasks)
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
@@ -474,7 +478,7 @@ class server(hfn.c_HelperFunctions):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file(os.path.getsize(file.attrib["file"]))
 
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].copied = self.StringToBool(file.attrib["copied"])
-                if file.attrib["copied"] == True:
+                if self.StringToBool(file.attrib["copied"]) == True:
                     Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 100.0
                     self.CopiedFiles += 1
 
@@ -484,6 +488,7 @@ class server(hfn.c_HelperFunctions):
             if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
                 Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
             else:
+
                 Tasks.Jobs[self.root.attrib["ID"]].progress = 0.0
 
         self.PreviousID = None
@@ -547,7 +552,6 @@ class server(hfn.c_HelperFunctions):
                     if not ID in Tasks.Order:
                         self.GetTask.append(ID)
 
-
             self.SendTask = []
 
             for ID in Tasks.Order:
@@ -555,34 +559,21 @@ class server(hfn.c_HelperFunctions):
                     self.SendTask.append(Tasks.Jobs[ID])
 
 
-            #if I have some jobs that you do not have, then send them only.
-            logging.debug("Sending tasks that do not exists on sync server:%s", len(self.SendTask))
-            Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put_no_reply', self.m_SerialiseTaskList(self.SendTask)))
+            #if I have some jobs that you do not have, then send them only. the sent tasks will be appended to the global list.
+            logging.debug("Uploading tasks:%s | Downloading tasks:%s", len(self.SendTask), len(self.GetTask))
+            if len(self.SendTask) > 0:
+                logging.debug("Sending tasks that do not exists on sync server:%s", len(self.SendTask))
+                Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put_no_reply', self.m_SerialiseTaskList(self.SendTask, Tasks)))
 
+            if len(self.GetTask)>0:
+                #request only the jobs that i need
+                self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/request', self.GetTask))
+                if self.response != None:
+                    #the data will come back with an dictionary with a list of the order of the IDs and the a list of the data that we requested
+                    self.m_deSerializeTaskList(self.response, Tasks)
 
-            #request only the jobs that i need
-            self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/request', self.GetTask))
-            self.response = json.loads(self.response)
-            if self.response != None:
-                #the data may come back not in the same order as you might just request the second or fourth. Need to ask for the order for the whole list as well, this should come in the reply
+            self.m_show_tasks(Tasks)
 
-
-
-
-
-
-            #only get the jobs that I do not have
-
-            # self.response = Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/get'))
-            # self.m_process_tasks_from_syncserver(self.response, Tasks)
-
-
-
-
-        #ask for all the tasks on the server
-
-
-        #the put task on the sync server will notify all registered clients about the tasks sent from this client. This also includes the order of the tasks.
         logging.debug("Server loop running in thread:%s", server_thread.name)
 
         while not Tasks.shutdown:

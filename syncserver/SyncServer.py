@@ -17,6 +17,8 @@ logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
 
+import asyncio
+import websockets
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunctions):
 
@@ -41,16 +43,22 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             self.Output.append(self.TaskData)
 
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
-    def m_setprogress(self,ID,progress):
-        logging.debug("Setting progress for:%s:%s",ID, progress)
-        Tasks.Jobs[ID].progress = progress
-        self.m_NotifyClients("/webimporter/v1/global/queue/put", self.m_SerialiseSyncTasks(Tasks))
-    def m_NotifyClients(self,command, payload):
+    def m_setprogress(self,ID,progress, client_address):
+        if ID in Tasks.Jobs:
+            if progress > Tasks.Jobs[ID].progress:
+                #logging.debug("Setting progress for:%s:%s", ID, progress)
+                Tasks.Jobs[ID].progress = progress
+                ### needs to only notify clients of the progress.
+                self.SendData = {}
+                self.SendData["ID"] = ID
+                self.SendData["progress"] = progress
+                self.m_NotifyClients("/webimporter/v1/global/queue/task/set_progress", self.SendData, client_address)
+    def m_NotifyClients(self,command, payload, sExcludeIp=None):
         for cl in Tasks.clientlist:
-            #if cl["ip"] == self.client_address[0]:
-            self.Client = cli.Client(cl["ip"],cl["port"],Tasks)
-            logging.debug("Sending tasks to:%s", self.client_address[0])
-            self.Client.m_send(self.Client.m_create_data(command, payload))
+            if cl["ip"] != sExcludeIp:
+                self.Client = cli.Client(cl["ip"],cl["port"],Tasks)
+                logging.debug("Sending tasks to:%s", self.client_address[0])
+                self.Client.m_send(self.Client.m_create_data(command, payload))
 
     # def setup(self):
     def handle(self):
@@ -69,50 +77,22 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             #request in the first place.
 
             logging.debug("number of global tasks:%s", len(Tasks.Jobs))
-            self.Payload = json.loads(self.Payload)
-            if len(self.Payload)>0:
-                for data in self.Payload:
-                    if not self.m_Is_ID_In_List(Tasks.Order,data["ID"]):
+            self.m_deSerializeTaskList(self.Payload, Tasks)
+            self.IncomingTasks = []
+            if len(self.Payload["TaskList"])>0:
+                for data in self.Payload["TaskList"]:
+                    self.IncomingTasks.append(Tasks.Jobs[data["ID"]])
+                    logging.debug("Adding a task to the global list from:%s", self.client_address[0])
 
+                    # if not self.m_Is_ID_In_List(Tasks.Order,data["ID"]):
 
-                        Tasks.Order.append(data["ID"])
-                        Tasks.Jobs[data["ID"]] = dataclasses.c_Task(data["ID"])
-                        Tasks.Jobs[data["ID"]].progress = data["Data"]["progress"]
-                        Tasks.Jobs[data["ID"]].metadata = data["Data"]["metadata"]
-                        for file in data["Data"]["filelist"]:
-                            Tasks.Jobs[data["ID"]].filelist[file] = dataclasses.c_file(data["Data"]["filelist"][file]["size"])
-                            Tasks.Jobs[data["ID"]].filelist[file].progress = data["Data"]["filelist"][file]["progress"]
-                            Tasks.Jobs[data["ID"]].filelist[file].copied = data["Data"]["filelist"][file]["copied"]
-                            Tasks.Jobs[data["ID"]].filelist[file].delete = data["Data"]["filelist"][file]["delete"]
-                            Tasks.Jobs[data["ID"]].filelist[file].uploaded = data["Data"]["filelist"][file]["uploaded"]
-
-                        Tasks.Jobs[data["ID"]].filelistOrder = data["Data"]["filelistOrder"]
-                        logging.debug("Adding a task to the global list from:%s", self.client_address[0])
-
-            #only send the job you have received to the clients
-
-                    #self.m_NotifyClients("/webimporter/v1/global/queue/put",self.m_SerializeTask(Tasks.Jobs[data["ID"]]))
+            #only send the job you have received to other clients other than the one who sent this in the first place
+            self.m_NotifyClients("/webimporter/v1/global/queue/put",self.m_SerialiseTaskList(self.IncomingTasks, Tasks), self.client_address[0])
         elif self.Command == "/syncserver/v1/global/queue/task/put_no_reply":
             logging.debug("number of global tasks:%s", len(Tasks.Jobs))
-            self.Payload = json.loads(self.Payload)
-            if len(self.Payload)>0:
-                for data in self.Payload:
-                    if not self.m_Is_ID_In_List(Tasks.Order,data["ID"]):
+            logging.debug("Adding %s tasks to the global list from:%s", len(self.Payload["TaskList"]), self.client_address[0])
+            self.m_deSerializeTaskList(self.Payload, Tasks)
 
-
-                        Tasks.Order.append(data["ID"])
-                        Tasks.Jobs[data["ID"]] = dataclasses.c_Task(data["ID"])
-                        Tasks.Jobs[data["ID"]].progress = data["Data"]["progress"]
-                        Tasks.Jobs[data["ID"]].metadata = data["Data"]["metadata"]
-                        for file in data["Data"]["filelist"]:
-                            Tasks.Jobs[data["ID"]].filelist[file] = dataclasses.c_file(data["Data"]["filelist"][file]["size"])
-                            Tasks.Jobs[data["ID"]].filelist[file].progress = data["Data"]["filelist"][file]["progress"]
-                            Tasks.Jobs[data["ID"]].filelist[file].copied = data["Data"]["filelist"][file]["copied"]
-                            Tasks.Jobs[data["ID"]].filelist[file].delete = data["Data"]["filelist"][file]["delete"]
-                            Tasks.Jobs[data["ID"]].filelist[file].uploaded = data["Data"]["filelist"][file]["uploaded"]
-
-                        Tasks.Jobs[data["ID"]].filelistOrder = data["Data"]["filelistOrder"]
-                        logging.debug("Adding a task to the global list from:%s", self.client_address[0])
         elif self.Command == "/syncserver/v1/global/queue/task/get_IDs":
             self.output = []
             for ID in Tasks.Jobs:
@@ -123,17 +103,22 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
         elif self.Command == "/syncserver/v1/global/queue/task/request":
             ############################ GET TASK  ############################
             logging.debug("Sending requested Task IDs to client:%s", self.client_address[0])
+            self.SendJobs = []
+            for ID in self.Payload:
+                self.SendJobs.append(Tasks.Jobs[ID])
 
-            self.m_reply(self.m_SerialiseTaskList(self.Payload, False),self.request)
+            self.m_reply(self.m_SerialiseTaskList(self.SendJobs, Tasks, False), self.request)
         elif self.Command == "/syncserver/v1/global/queue/task/get":
             ############################ GET TASK  ############################
             logging.debug("Sending tasks to client:%s", self.client_address[0])
             self.m_reply(self.m_SerialiseSyncTasks(Tasks, False),self.request)
         elif self.Command == "/syncserver/v1/global/queue/task/set_progress":
             ############################ SET PROGRESS ############################
-            self.ID = self.Payload["ID"]
-            self.progress = self.Payload["progress"]
-            self.m_setprogress(self.ID,self.progress)
+
+            #notifies clients of the progress too
+            self.m_setprogress(self.Payload["ID"],self.Payload["progress"], self.client_address[0])
+
+
         elif self.Command == "/syncserver/v1/global/queue/set_priority":
             ############################ SET PRIORITY ############################
             logging.debug("Set priority list")
@@ -142,7 +127,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler,hfn.c_HelperFunc
             for Data in self.data:
                 Tasks.Order.append(Data)
 
-            self.m_NotifyClients("/webimporter/v1/local/queue/set_priority", Tasks.Order)
+            self.m_NotifyClients("/webimporter/v1/local/queue/set_priority", Tasks.Order, self.client_address[0])
 
         elif self.Command == "/syncserver/v1/global/queue/get_priority":
             ############################ GET PRIORITY ############################
@@ -183,6 +168,14 @@ class server(hfn.c_HelperFunctions):
     def __init__(self):
         global Tasks
         Tasks = dataclasses.c_SyncServerData()
+
+    @asyncio.coroutine
+    def hello(self, websocket, path):
+        self.data = yield from websocket.recv()
+        logging.debug(self.data)
+        # self.greeting = "Hello {}!".format(self.name)
+        yield from websocket.send(u"pong".encode("utf-8"))
+        # print("> {}".format(self.greeting))
     def run(self):
         # Port 0 means to select an arbitrary unused port
         HOST, PORT = "localhost",  8908
@@ -190,13 +183,18 @@ class server(hfn.c_HelperFunctions):
         ip, port = server.server_address
         # Start a thread with the server -- that thread will then start one
         # more thread for each request
+
         server_thread = threading.Thread(target=server.serve_forever)
+
         # Exit the server thread when the main thread terminates
         server_thread.daemon = True
         server_thread.start()
         server_thread.name = "Sync_Server"
-        logging.debug("Sync Server loop running in thread:%s", server_thread.name)
 
+        self.start_server = websockets.serve(self.hello, 'localhost', 8765)
+        asyncio.get_event_loop().run_until_complete(self.start_server)
+        logging.debug("Sync Server loop running in thread:%s", server_thread.name)
+        asyncio.get_event_loop().run_forever()
         while not Tasks.shutdown:
              time.sleep(1)
              continue

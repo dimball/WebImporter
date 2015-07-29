@@ -8,6 +8,10 @@ import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
+
+
+from websocket import create_connection
+import json
 class c_CopyWorker(threading.Thread):
     def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand):
         threading.Thread.__init__(self)
@@ -159,8 +163,18 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     continue
 
                 del self.Threads[thread]
+
+    def m_SendToWebsocket(self, data):
+        print("sending to websocket")
+        self.websocket = yield from websockets.connect('ws://localhost:8765/')
+        yield from self.websocket.send("test")
+        #greeting = yield from websocket.recv()
+        #print("< {}".format(greeting))
+        yield from self.websocket.close()
+
     def run(self):
         logging.debug("Line manager started:")
+        self.ws = create_connection('ws://localhost:8765/')
         while True:
             self.next_task = self.task_queue.get()
             if self.next_task is None:
@@ -218,6 +232,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         self.aCopyWorkers.append(self.CopyWorkerProcess)
                         self.Threads[self.CopyWorkerProcess.name] = (self.CopyWorkerProcess)
                 self.OldQueueSize = 0
+                self.CompleteCounter = 0
                 while True:
                     self.CurrentQueueSize = self.result_queue.qsize()
 
@@ -237,27 +252,42 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                             self.LargeCopyWorkerProcess.join()
                         self.Shutdown()
                         self.task_queue.task_done()
+                        self.WriteJob(self.Tasks, self.ID)
                         break
 
                     self.CurrentSize = len(self.next_task.filelist)-len(self.files)
                     self.dict_Jobs[self.ID].progress = (self.CurrentSize+self.CurrentQueueSize)/len(self.next_task.filelist)*100
+
+
+                    self.Payload = {}
+                    self.Payload["ID"] = self.ID
+                    self.Payload["progress"] = self.dict_Jobs[self.ID].progress
+
                     if self.CurrentQueueSize > self.OldQueueSize:
                         self.OldQueueSize = self.CurrentQueueSize
                         #send progress to the sync server here?
                         #the tasks processed here are only the local ones.
 
+
+
+
                         if self.Tasks.syncserver_client.connected:
-                            self.Payload = {}
-                            self.Payload["ID"] = self.ID
-                            self.Payload["progress"] = self.dict_Jobs[self.ID].progress
-                            self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
+
+                            if self.CompleteCounter > 4:
+                                self.ws.send(u"hello".encode('utf-8'))
+                                #self.ws.recv()
+                                #self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
+                                self.CompleteCounter = 0
+                            else:
+                                self.CompleteCounter += 1
                         #write out data each time a file has been processed
-                        self.WriteJob(self.Tasks,self.ID)
+
 
 
                     if self.dict_Jobs[self.ID].progress >= 100.0:
                         self.dict_Jobs[self.ID].progress = 100.0
                         self.dict_Jobs[self.ID].active = False
+                        #self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
 
                         while not self.result_queue.empty():
                             self.result_queue.get()
