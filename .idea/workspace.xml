@@ -1,16 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="db94d1ed-9c29-4a67-8b78-a94e7e6ca188" name="New protocol" comment="websockets test">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/client/TornadoClient" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/server/commands.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/AsyncTcpServer.py" afterPath="$PROJECT_DIR$/server/AsyncTcpServer.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/syncserver/SyncServer.py" afterPath="$PROJECT_DIR$/syncserver/SyncServer.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/client/TCPClient.py" afterPath="$PROJECT_DIR$/client/TCPClient.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/client.py" afterPath="$PROJECT_DIR$/server/client.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/common.py" afterPath="$PROJECT_DIR$/common.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/dataclasses.py" afterPath="$PROJECT_DIR$/dataclasses.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/webimporter.py" afterPath="$PROJECT_DIR$/server/webimporter.py" />
+    <list default="true" id="db94d1ed-9c29-4a67-8b78-a94e7e6ca188" name="New protocol" comment="tornado server client websocket implementation">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/workers.py" afterPath="$PROJECT_DIR$/server/workers.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
@@ -208,8 +199,8 @@
       <file leaf-file-name="workers.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/server/workers.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.66061705">
-              <caret line="273" column="0" selection-start-line="273" selection-start-column="0" selection-end-line="273" selection-end-column="0" />
+            <state vertical-scroll-proportion="-4.347273">
+              <caret line="152" column="25" selection-start-line="152" selection-start-column="25" selection-end-line="152" selection-end-column="25" />
               <folding>
                 <element signature="e#0#9#0" expanded="true" />
                 <element signature="e#342#5963#0" expanded="false" />
@@ -725,7 +716,19 @@
       <option name="project" value="LOCAL" />
       <updated>1438184751679</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="tornado server client websocket implementation">
+      <created>1438267773695</created>
+      <option name="number" value="00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1438267773695</updated>
+    </task>
+    <task id="LOCAL-00016" summary="tornado server client websocket implementation">
+      <created>1438267838962</created>
+      <option name="number" value="00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1438267838962</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="TodoView">
@@ -743,17 +746,17 @@
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" weight="0.15911485" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.3298611" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
+      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="6" side_tool="true" content_ui="tabs" />
       <window_info id="Application Servers" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.3298611" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
-      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" weight="0.33979475" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
+      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" weight="0.34018266" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="top" auto_hide="false" internal_type="DOCKED" type="FLOATING" visible="true" weight="0.3243243" sideWeight="0.5" order="0" side_tool="true" content_ui="tabs" x="125" y="678" width="1898" height="298" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.12118019" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.3298611" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
       <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.39933258" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.25" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Commander" active="false" anchor="right" auto_hide="false" internal_type="SLIDING" type="SLIDING" visible="false" weight="0.4" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Inspection" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.4" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
@@ -805,7 +808,8 @@
     <MESSAGE value="cleanup" />
     <MESSAGE value="New protocol" />
     <MESSAGE value="websockets test" />
-    <option name="LAST_COMMIT_MESSAGE" value="websockets test" />
+    <MESSAGE value="tornado server client websocket implementation" />
+    <option name="LAST_COMMIT_MESSAGE" value="tornado server client websocket implementation" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
   </component>
   <component name="XDebuggerManager">
@@ -863,6 +867,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
           <caret line="13" column="0" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="52" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1150,13 +1155,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/server/ws_client.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="13" column="0" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="52" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/client/TornadoClient">
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
@@ -1315,10 +1313,18 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/server/ws_client.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="0.3709091">
+          <caret line="13" column="18" selection-start-line="13" selection-start-column="18" selection-end-line="13" selection-end-column="18" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/server/workers.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.66061705">
-          <caret line="273" column="0" selection-start-line="273" selection-start-column="0" selection-end-line="273" selection-end-column="0" />
+        <state vertical-scroll-proportion="-4.347273">
+          <caret line="152" column="25" selection-start-line="152" selection-start-column="25" selection-end-line="152" selection-end-column="25" />
           <folding>
             <element signature="e#0#9#0" expanded="true" />
             <element signature="e#342#5963#0" expanded="false" />

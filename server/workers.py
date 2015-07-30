@@ -139,7 +139,7 @@ class c_CopyWorker(threading.Thread):
         logging.debug("Shutting down copy worker")
         return
 class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
-    def __init__(self,Tasks, manager_name, ClientList=[]):
+    def __init__(self,Tasks, manager_name):
         threading.Thread.__init__(self)
         self.Tasks = Tasks
         self.task_queue = Tasks.task_queue
@@ -151,8 +151,6 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
         self.large_worker_queue = queue.Queue()
         self.result_queue = queue.Queue()
         self.Threads = {}
-
-        self.ClientList = ClientList
     def Shutdown(self):
         self.aThreads = []
         for thread in self.Threads:
