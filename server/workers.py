@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
 
-
+import client as cl
 from websocket import create_connection
 import json
 class c_CopyWorker(threading.Thread):
@@ -139,8 +139,7 @@ class c_CopyWorker(threading.Thread):
         logging.debug("Shutting down copy worker")
         return
 class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
-    def __init__(self,Tasks, manager_name):
-
+    def __init__(self,Tasks, manager_name, ClientList=[]):
         threading.Thread.__init__(self)
         self.Tasks = Tasks
         self.task_queue = Tasks.task_queue
@@ -152,6 +151,8 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
         self.large_worker_queue = queue.Queue()
         self.result_queue = queue.Queue()
         self.Threads = {}
+
+        self.ClientList = ClientList
     def Shutdown(self):
         self.aThreads = []
         for thread in self.Threads:
@@ -164,17 +165,9 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
 
                 del self.Threads[thread]
 
-    def m_SendToWebsocket(self, data):
-        print("sending to websocket")
-        self.websocket = yield from websockets.connect('ws://localhost:8765/')
-        yield from self.websocket.send("test")
-        #greeting = yield from websocket.recv()
-        #print("< {}".format(greeting))
-        yield from self.websocket.close()
-
     def run(self):
         logging.debug("Line manager started:")
-        self.ws = create_connection('ws://localhost:8765/')
+
         while True:
             self.next_task = self.task_queue.get()
             if self.next_task is None:
@@ -270,19 +263,24 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
 
 
 
+                        #sends progress data to the sync server so that all other clients will get notified of the progress too.
 
                         if self.Tasks.syncserver_client.connected:
+                            self.Tasks.syncserver_progress_client.m_send(json.dumps(self.Payload))
+                        else:
+                            for cli in self.Tasks.ProgressClients:
+                                cli.write_message(json.dumps(self.Payload))
 
-                            if self.CompleteCounter > 4:
-                                self.ws.send(u"hello".encode('utf-8'))
-                                #self.ws.recv()
-                                #self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
-                                self.CompleteCounter = 0
-                            else:
-                                self.CompleteCounter += 1
+
+                        """
+                            else need to update the connected clients to this server about the status update.
+                            No need for polling (ajax style). The server will push the data to the clients
+
+
+
+                        """
+
                         #write out data each time a file has been processed
-
-
 
                     if self.dict_Jobs[self.ID].progress >= 100.0:
                         self.dict_Jobs[self.ID].progress = 100.0

@@ -6,6 +6,8 @@ import select
 import json
 import os
 import random
+from websocket import create_connection
+
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
@@ -51,29 +53,40 @@ def m_receive_all(sock):
             if currentlength >= int(length):
                 break
     return data
+# def client(string):
+#     HOST, PORT = 'localhost', 9090
+#     # SOCK_STREAM == a TCP socket
+#     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#     #sock.setblocking(0)  # optional non-blocking
+#     sock.connect((HOST, PORT))
+#
+#     SizeOfData = len(string)
+#     Payload = str(SizeOfData) + "|" + string
+#
+#     print("sending data => " + Payload)
+#     sock.sendall(bytes(Payload, 'utf8'))
+#
+#
+#     #sock.setblocking(0)
+#     #ready = select.select([sock],[],[],2)
+#     reply = m_receive_all(sock)
+#     if len(reply)>0:
+#         return reply
+#
+#     if sock != None:
+#         sock.close()
+#     #return reply
+#
 def client(string):
-    HOST, PORT = 'localhost', 9090
-    # SOCK_STREAM == a TCP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #sock.setblocking(0)  # optional non-blocking
-    sock.connect((HOST, PORT))
-
-    SizeOfData = len(string)
-    Payload = str(SizeOfData) + "|" + string
-
-    print("sending data => " + Payload)
-    sock.sendall(bytes(Payload, 'utf8'))
-
-
-    #sock.setblocking(0)
-    #ready = select.select([sock],[],[],2)
-    reply = m_receive_all(sock)
-    if len(reply)>0:
-        return reply
-
-    if sock != None:
-        sock.close()
-    #return reply
+    connection = create_connection("ws://localhost:9090/command")
+    connection.send(string)
+    try:
+        result = connection.recv()
+        if result != "None":
+            #connection.close()
+            return result
+    except:
+        return None
 
 def CreateData(Command,Payload=0):
     data = {}
@@ -99,8 +112,9 @@ def create_copytask():
 
         payload["data"] = pl
         aPayload.append(payload)
-
-    client(CreateData('/webimporter/v1/queue/task/create', aPayload))
+    print(type(aPayload))
+    response = client(CreateData('/webimporter/v1/queue/task/create', aPayload))
+    print(response)
 def modify_task(slot):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
     JobList = ['c:/Data3']
@@ -152,10 +166,19 @@ def CheckStatus():
             if job != "":
                 jobs_lookup[job] = True
 
+        WSProgress =  create_connection("ws://localhost:9090/progress")
+
+
+
+
+
+
         while len(jobs_lookup)>0:
             for job in aJobs:
                 if job in jobs_lookup:
-                    response = client(CreateData('/webimporter/v1/queue/status',job))
+                    #response = client(CreateData('/webimporter/v1/queue/status',job))
+                    WSProgress.send(CreateData('/webimporter/v1/queue/status',job))
+                    response = WSProgress.recv()
                     #print(response)
                     if response != None:
                         response = json.loads(response)
@@ -311,10 +334,10 @@ def put_tasks_on_queue():
 if __name__ == "__main__":
     #create_copytask()
     #create_copytask()
-    create_copytask()
-    startqueue()
-    put_tasks_on_queue()
-    activate_queue()
+    #create_copytask()
+    #startqueue()
+    #put_tasks_on_queue()
+    #activate_queue()
     #deactivate_queue()
     # time.sleep(5)
     #pausequeue()
@@ -323,7 +346,7 @@ if __name__ == "__main__":
     #
     # setpriority([])
     # time.sleep(2)
-    #CheckStatus()
+   #CheckStatus()
 
     #setpriority([])
     #deactivate_queue()
@@ -372,4 +395,4 @@ if __name__ == "__main__":
 
 
 
-    #shutdown()
+    shutdown()

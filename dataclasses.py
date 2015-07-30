@@ -49,6 +49,9 @@ class c_basedata():
         self.Order = []
         self.WorkData = {}
         self.shutdown = False
+        self.CommandClients = []
+        self.ProgressClients = []
+        self.MainLoop = None
 class c_SyncServerData(c_basedata):
     def __init__(self):
         c_basedata.__init__(self)
@@ -60,3 +63,4 @@ class c_ServerData(c_basedata):
         self.task_queue = queue.Queue()
         self.LineManagers = []
         self.syncserver_client = None
+        self.syncserver_progress_client = None

@@ -75,14 +75,22 @@ class c_HelperFunctions():
     #
     #     self.output.append(self.TaskData)
     #     return self.output
-    def m_reply(self,payload,sock):
+    # def m_reply(self,payload,sock):
+    #     #####payload comes in as a dictionary. NOT AS A STRING####
+    #
+    #     self.payload = json.dumps(payload)
+    #     self.SizeOfData = len(self.payload)
+    #     self.payload = str(self.SizeOfData) + "|" + self.payload
+    #    #logging.debug("Replying with = %s",self.payload)
+    #     sock.sendall(bytes(self.payload,encoding='utf8'))
+    #
+    def m_reply(self,payload,websock):
         #####payload comes in as a dictionary. NOT AS A STRING####
 
         self.payload = json.dumps(payload)
-        self.SizeOfData = len(self.payload)
-        self.payload = str(self.SizeOfData) + "|" + self.payload
        #logging.debug("Replying with = %s",self.payload)
-        sock.sendall(bytes(self.payload,encoding='utf8'))
+        websock.write_message(self.payload)
+
     def m_SerialiseTaskList(self, aTaskJobs, Tasks, bReport=True):
         #this way we can add some extra information into the payload
         self.Data = {}
@@ -137,37 +145,6 @@ class c_HelperFunctions():
                 Tasks.Jobs[Task["ID"]].filelist[file].uploaded = self.StringToBool(Task["Data"]["filelist"][file]["uploaded"])
 
             logging.debug("deSerialized task:%s", Task["ID"])
-
-    # def m_SerialiseSyncTasks(self, Tasks, bReport=True):
-    #     self.Tasks = Tasks
-    #     self.output = []
-    #     for ID in self.Tasks.Order:
-    #         if ID in self.Tasks.Jobs:
-    #             self.TaskData = {}
-    #             self.TaskData["ID"] = ID
-    #             self.TaskData["report"] = bReport
-    #
-    #             self.TaskData["Data"] = {}
-    #
-    #             if self.Tasks.Jobs[ID].type == "local":
-    #                 self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].GetCurrentProgress()
-    #             else:
-    #                 self.TaskData["Data"]["progress"] = self.Tasks.Jobs[ID].progress
-    #             self.TaskData["Data"]["type"] = "global"
-    #             self.TaskData["Data"]["metadata"] = self.Tasks.Jobs[ID].metadata
-    #             self.TaskData["Data"]["filelist"] = {}
-    #             self.TaskData["Data"]["filelistOrder"] = self.Tasks.Jobs[ID].filelistOrder
-    #             for file in self.Tasks.Jobs[ID].filelistOrder:
-    #                 self.FileData = {}
-    #                 self.FileData["progress"] = self.Tasks.Jobs[ID].filelist[file].progress
-    #                 self.FileData["copied"] = self.Tasks.Jobs[ID].filelist[file].copied
-    #                 self.FileData["delete"] = self.Tasks.Jobs[ID].filelist[file].delete
-    #                 self.FileData["size"] = self.Tasks.Jobs[ID].filelist[file].size
-    #                 self.FileData["uploaded"] = self.Tasks.Jobs[ID].filelist[file].uploaded
-    #                 self.TaskData["Data"]["filelist"][file] = self.FileData
-    #
-    #             self.output.append(self.TaskData)
-    #     return self.output
     def m_receive_all(self, sock):
         self.HeaderLength = 32
         self.PackageLength = 1024
@@ -296,6 +273,8 @@ class c_HelperFunctions():
         self.Payload = Payload
         self.FileList = {}
         self.FileListOrder = []
+        logging.debug(type(self.Payload))
+
         for FileObj in self.Payload:
             if FileObj["type"] == "folder":
                 self.aFilePaths = self.get_filepaths(FileObj["data"])

@@ -169,13 +169,13 @@ class server(hfn.c_HelperFunctions):
         global Tasks
         Tasks = dataclasses.c_SyncServerData()
 
-    @asyncio.coroutine
-    def hello(self, websocket, path):
-        self.data = yield from websocket.recv()
-        logging.debug(self.data)
-        # self.greeting = "Hello {}!".format(self.name)
-        yield from websocket.send(u"pong".encode("utf-8"))
-        # print("> {}".format(self.greeting))
+    # @asyncio.coroutine
+    # def hello(self, websocket, path):
+    #     self.data = yield from websocket.recv()
+    #     logging.debug(self.data)
+    #     # self.greeting = "Hello {}!".format(self.name)
+    #     yield from websocket.send(u"pong".encode("utf-8"))
+    #     # print("> {}".format(self.greeting))
     def run(self):
         # Port 0 means to select an arbitrary unused port
         HOST, PORT = "localhost",  8908
@@ -191,10 +191,10 @@ class server(hfn.c_HelperFunctions):
         server_thread.start()
         server_thread.name = "Sync_Server"
 
-        self.start_server = websockets.serve(self.hello, 'localhost', 8765)
-        asyncio.get_event_loop().run_until_complete(self.start_server)
+        # self.start_server = websockets.serve(self.hello, 'localhost', 8765)
+        # asyncio.get_event_loop().run_until_complete(self.start_server)
         logging.debug("Sync Server loop running in thread:%s", server_thread.name)
-        asyncio.get_event_loop().run_forever()
+        # asyncio.get_event_loop().run_forever()
         while not Tasks.shutdown:
              time.sleep(1)
              continue
