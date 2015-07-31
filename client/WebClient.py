@@ -99,7 +99,7 @@ def CreateData(Command,Payload=0):
     data["command"] = Command
     data["payload"] = Payload
     return json.dumps(data)
-def create_copytask():
+def create_copytask(Client):
     tree = ET.ElementTree(file="./client_config.xml")
     config = tree.getroot()
     JobList = []
@@ -118,7 +118,7 @@ def create_copytask():
         payload["data"] = pl
         aPayload.append(payload)
 
-    client(CreateData('/webimporter/v1/queue/task/create', aPayload))
+    Client.m_send(CreateData('/webimporter/v1/queue/task/create', aPayload))
 
 def modify_task(slot):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
@@ -340,7 +340,7 @@ if __name__ == "__main__":
     #setpriority([])
     # create_copytask()
     # #create_copytask()
-    create_copytask()
+    create_copytask(CommandHandler)
     time.sleep(4)
     startqueue(CommandHandler)
     put_tasks_on_queue(CommandHandler)
