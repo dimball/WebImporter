@@ -6,12 +6,14 @@ import select
 import json
 import os
 import random
-from websocket import create_connection
+import websocket
 
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
+
+import threading
 
 # def recvall(sock):
 #     data = ""
@@ -22,63 +24,67 @@ except ImportError:
 #         if part == "":
 #             break
 #     return data
-def m_receive_all(sock):
-    HeaderLength = 64
-    PackageLength = 2048
-    data = ""
-    data = sock.recv(HeaderLength).decode('utf8')
-    if data != "":
-        #logging.debug(self.data)
-        length = data.split("|")[0]
-        SizeOfHeader = len(length)+1 # +1 is the "|" character
-        data = data.split("|")[1]
 
-        currentlength = HeaderLength-SizeOfHeader
+import common as hfn
+import logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='(%(threadName)-10s) %(message)s',
+                    )
+
+class client_progress_handler():
+    def on_message(self, ws, data):
+        self.Data = json.loads(data)
+        self.Command = self.Data["command"]
+        self.Payload = self.Data["payload"]
+
+        if self.Command == "/client/v1/local/queue/task/set_progress":
+            logging.debug("Received TASK progress:%s:%s", self.Payload["ID"], self.Payload["progress"])
+        elif self.Command == "/client/v1/local/queue/task/file/set_progress":
+            logging.debug("Received FILE progress:%s:%s", self.Payload["file"], self.Payload["progress"])
+class client_command_handler():
+    def on_message(self, ws, data):
+        self.Data = json.loads(data)
+        self.Command = self.Data["command"]
+        self.Payload = self.Data["payload"]
+        if self.Command == "/client/v1/local/queue/task/put":
+            logging.debug("Received new TASK from webimporter:%s", self.Payload["TaskList"][0]["ID"])
+
+
+
+class threaded_Websocket_Client(threading.Thread, hfn.c_HelperFunctions):
+    def __init__(self,ip, port, sType, handler):
+        threading.Thread.__init__(self)
+        self.connected = False
+        self.type = sType
+        self.ip = ip
+        self.port = port
+        self.connection = None
+        self.name = sType
+        self.on_message = handler.on_message
+
+        # try:
+        logging.debug("[" + self.type + "] Attempting to register on webimporter at %s:%s", self.ip, self.port)
+        self.connection = websocket.create_connection("ws://" + self.ip + ":" + str(self.port) + "/" + self.type)
+        self.connected = True
+        # except:
+        #     logging.debug("Web importer at %s:%s is not reachable. Disabling webimporter for this session",self.ip, self.port)
+        #     self.connected = False
+
+        if self.connected:
+            logging.debug("Connected to sync server at: %s:%s",self.ip, self.port)
+
+        self.start()
+    def run(self):
         while True:
-            #logging.debug(self.currentlength)
-            if (int(length)-currentlength)<PackageLength:
-                #logging.debug("reading half:%s",int(self.length)-self.currentlength)
-                if (int(length)-currentlength) < 0:
-                    line = sock.recv(int(length)).decode('utf8')
-                else:
-                    line = sock.recv((int(length)-currentlength)).decode('utf8')
-                #logging.debug(self.line)
-            else:
-                #logging.debug("reading full")
-                line = sock.recv(PackageLength).decode('utf8')
+            if self.connection != None:
+                self.on_message(self.connection, self.connection.recv())
+                #logging.debug("received data from [%s} %s", self.name, self.connection.recv())
 
-            data += line
-            currentlength += len(line)
+    def m_send(self, payload,bDebug=True):
+        self.connection.send(payload)
 
-            if currentlength >= int(length):
-                break
-    return data
-# def client(string):
-#     HOST, PORT = 'localhost', 9090
-#     # SOCK_STREAM == a TCP socket
-#     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#     #sock.setblocking(0)  # optional non-blocking
-#     sock.connect((HOST, PORT))
-#
-#     SizeOfData = len(string)
-#     Payload = str(SizeOfData) + "|" + string
-#
-#     print("sending data => " + Payload)
-#     sock.sendall(bytes(Payload, 'utf8'))
-#
-#
-#     #sock.setblocking(0)
-#     #ready = select.select([sock],[],[],2)
-#     reply = m_receive_all(sock)
-#     if len(reply)>0:
-#         return reply
-#
-#     if sock != None:
-#         sock.close()
-#     #return reply
-#
 def client(string):
-    connection = create_connection("ws://localhost:9090/command")
+    connection = websocket.create_connection("ws://localhost:9090/command")
     connection.send(string)
     try:
         result = connection.recv()
@@ -86,7 +92,7 @@ def client(string):
             #connection.close()
             return result
     except:
-        return None
+        return "None"
 
 def CreateData(Command,Payload=0):
     data = {}
@@ -101,7 +107,6 @@ def create_copytask():
         JobList.append(path.text)
     aPayload = []
 
-
     for pl in JobList:
         payload = {}
         head, tail = os.path.split(pl)
@@ -112,9 +117,9 @@ def create_copytask():
 
         payload["data"] = pl
         aPayload.append(payload)
-    print(type(aPayload))
-    response = client(CreateData('/webimporter/v1/queue/task/create', aPayload))
-    print(response)
+
+    client(CreateData('/webimporter/v1/queue/task/create', aPayload))
+
 def modify_task(slot):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
     JobList = ['c:/Data3']
@@ -141,7 +146,6 @@ def modify_task(slot):
                 print(response)
         else:
             print("no jobs on server")
-
 def start_task(slot):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
 
@@ -150,11 +154,11 @@ def start_task(slot):
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             if slot < len(aJobs):
-                response = client(CreateData('/webimporter/v1/queue/task/start',aJobs[slot]))
+                response = client(CreateData('/webimporter/v1/queue/task/start', aJobs[slot]))
                 print(response)
         else:
             print("no jobs on server")
-
+"""
 def CheckStatus():
     jobs_lookup = {}
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
@@ -167,11 +171,6 @@ def CheckStatus():
                 jobs_lookup[job] = True
 
         WSProgress =  create_connection("ws://localhost:9090/progress")
-
-
-
-
-
 
         while len(jobs_lookup)>0:
             for job in aJobs:
@@ -202,6 +201,8 @@ def CheckStatus():
         print("ended")
     else:
         print("No active jobs on server")
+"""
+
 def pause(slot):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
     if dJobs != None:
@@ -237,7 +238,7 @@ def resumequeue():
             for j in aJobs:
                 if j != "":
                     client(CreateData('/webimporter/v1/queue/task/resume', j))
-def startqueue():
+def startqueue(Client):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
@@ -245,7 +246,7 @@ def startqueue():
         if len(aJobs)>0:
             for j in aJobs:
                 if j != "":
-                    client(CreateData('/webimporter/v1/queue/task/start', j))
+                    Client.m_send(CreateData('/webimporter/v1/queue/task/start', j))
                     #time.sleep(1)
 def removecompleted():
     aJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
@@ -302,6 +303,8 @@ def modify(slot):
                 response = client(CreateData('/webimporter/v1/queue/task/modify', data))
         else:
             print("no jobs on server")
+
+
 def setpriority(prioritylist):
     dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
@@ -325,26 +328,30 @@ def setpriority(prioritylist):
 def shutdown():
     client(CreateData('/webimporter/v1/server/shutdown'))
 
-def activate_queue():
-    client(CreateData('/webimporter/v1/queue/activate'))
+def activate_queue(Client):
+    Client.m_send(CreateData('/webimporter/v1/queue/activate'))
 def deactivate_queue():
     client(CreateData('/webimporter/v1/queue/deactivate'))
-def put_tasks_on_queue():
-    client(CreateData('/webimporter/v1/queue/put_tasks'))
+def put_tasks_on_queue(Client):
+    Client.m_send(CreateData('/webimporter/v1/queue/put_tasks'))
 if __name__ == "__main__":
-    #create_copytask()
-    #create_copytask()
-    #create_copytask()
-    #startqueue()
-    #put_tasks_on_queue()
-    #activate_queue()
+    threaded_Websocket_Client("localhost", 9090, "progress", client_progress_handler())
+    CommandHandler = threaded_Websocket_Client("localhost", 9090, "command", client_command_handler())
+    #setpriority([])
+    # create_copytask()
+    # #create_copytask()
+    create_copytask()
+    time.sleep(4)
+    startqueue(CommandHandler)
+    put_tasks_on_queue(CommandHandler)
+    activate_queue(CommandHandler)
     #deactivate_queue()
     # time.sleep(5)
     #pausequeue()
     #
     #resumequeue()
     #
-    # setpriority([])
+    #
     # time.sleep(2)
    #CheckStatus()
 
@@ -395,4 +402,5 @@ if __name__ == "__main__":
 
 
 
-    shutdown()
+    #shutdown()
+

@@ -64,3 +64,4 @@ class c_ServerData(c_basedata):
         self.LineManagers = []
         self.syncserver_client = None
         self.syncserver_progress_client = None
+        self.SimpleClient = None

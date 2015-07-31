@@ -12,8 +12,8 @@ logging.basicConfig(level=logging.DEBUG,
 import client as cl
 from websocket import create_connection
 import json
-class c_CopyWorker(threading.Thread):
-    def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand):
+class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
+    def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand, Tasks):
         threading.Thread.__init__(self)
         self.operand = operand
         self.name = worker_name
@@ -22,7 +22,9 @@ class c_CopyWorker(threading.Thread):
         self.worker_name = worker_name
         self.worker_queue = worker_queue
         self.result_queue = result_queue
+        self.Tasks = Tasks
         logging.debug("Copy worker Started")
+
     def copyFile(self,sourcefile, destinationfile,filesize, buffer_size=10485760, perserveFileDate=True):
         '''
         Copies a file to a new location. Much faster performance than Apache Commons due to use of larger buffer
@@ -59,8 +61,7 @@ class c_CopyWorker(threading.Thread):
 
         if(perserveFileDate):
             shutil.copystat(src, dst)
-
-    def customCopyFile(self,sourcefile,destinationfile,filesize,dict_Jobs,ID,worker_name,buffer_size=16, perserveFileDate=True):
+    def customCopyFile(self,sourcefile,destinationfile,filesize,dict_Jobs,ID,worker_name, Tasks, buffer_size=16, perserveFileDate=True, ):
         buffer_size = 1024*1024*buffer_size
         try:
             fsrc = open(sourcefile, 'rb')
@@ -69,6 +70,10 @@ class c_CopyWorker(threading.Thread):
             if(buffer_size == 0):
                 buffer_size = 1024
             count = 0
+            self.Payload = {}
+            self.Payload["ID"] = self.ID
+            self.Payload["file"] = sourcefile
+
             while True:
                 # Read blocks of size 2**20 = 1048576
                 # Depending on system may require smaller
@@ -84,6 +89,17 @@ class c_CopyWorker(threading.Thread):
                 fdst.write(buf)
                 count += len(buf)
                 dict_Jobs[ID].workerlist[worker_name][sourcefile] = (count/filesize)*100
+                dict_Jobs[ID].filelist[sourcefile].progress = (count/filesize)*100
+                self.Payload["progress"] = dict_Jobs[ID].workerlist[worker_name][sourcefile]
+                if filesize > 1024*1024*self.Tasks.WorkData["large_file_threshold"]:
+                    for cli in Tasks.ProgressClients:
+                        cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.Payload))
+                    if Tasks.syncserver_client.connected:
+                        #this sends it to the sync server, who will notify all connected clients about the progress
+                        Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/file/set_progress", self.Payload))
+
+
+
         finally:
             if fdst:
                 fdst.close()
@@ -119,7 +135,7 @@ class c_CopyWorker(threading.Thread):
                     if self.worker_name in self.dict_Jobs[self.ID].workerlist == False:
                         self.dict_Jobs[self.ID].workerlist[self.worker_name] = {}
                     #self.copyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size)
-                    self.customCopyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size, self.dict_Jobs, self.ID, self.worker_name)
+                    self.customCopyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size, self.dict_Jobs, self.ID, self.worker_name, self.Tasks)
                     if self.dict_Jobs[self.ID].active == False:
 
                         self.worker_queue.task_done()
@@ -205,7 +221,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     #dynamically adjust number of copy workers depending on the average size of files?
                     self.CopyWorkerName = "[" + self.manager_name + "] Large_Copy Worker"
                     self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
-                    self.LargeCopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.large_worker_queue,self.result_queue, ">")
+                    self.LargeCopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.large_worker_queue,self.result_queue, ">", self.Tasks)
                     self.LargeCopyWorkerProcess.start()
                     self.Threads[self.LargeCopyWorkerProcess.name] = (self.LargeCopyWorkerProcess)
 
@@ -218,12 +234,13 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     for i in range(self.NumSmallCopyWorkers):
                         self.CopyWorkerName = "[" + self.manager_name + "] Copy Worker_" + str(i)
                         self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
-                        self.CopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.worker_queue,self.result_queue, "<")
+                        self.CopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.worker_queue,self.result_queue, "<", self.Tasks)
                         self.CopyWorkerProcess.start()
                         self.aCopyWorkers.append(self.CopyWorkerProcess)
                         self.Threads[self.CopyWorkerProcess.name] = (self.CopyWorkerProcess)
                 self.OldQueueSize = 0
                 self.CompleteCounter = 0
+                self.aCompletedFiles = {}
                 while True:
                     self.CurrentQueueSize = self.result_queue.qsize()
 
@@ -263,11 +280,31 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
 
                         #sends progress data to the sync server so that all other clients will get notified of the progress too.
 
+
+                        for cli in self.Tasks.ProgressClients:
+                            cli.write_message(self.m_create_data("/client/v1/local/queue/task/set_progress", self.Payload))
+
+                        for file in self.Tasks.Jobs[self.ID].filelist:
+                            if file not in self.aCompletedFiles:
+                                if self.Tasks.Jobs[self.ID].filelist[file].size < self.Tasks.WorkData["large_file_threshold"]*1024*1024:
+                                    if self.Tasks.Jobs[self.ID].filelist[file].progress == 100.0:
+                                        self.FilePayload = {}
+                                        self.FilePayload["ID"] = self.ID
+                                        self.FilePayload["file"] = file
+                                        self.FilePayload["progress"] = self.Tasks.Jobs[self.ID].filelist[file].progress
+                                        for cli in self.Tasks.ProgressClients:
+                                            cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.FilePayload))
+                                        if self.Tasks.syncserver_client.connected:
+                                            #this sends it to the sync server, who will notify all connected clients about the progress
+                                            self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/file/set_progress", self.FilePayload))
+
+                                        self.aCompletedFiles[file] = True
+
                         if self.Tasks.syncserver_client.connected:
-                            self.Tasks.syncserver_progress_client.m_send(json.dumps(self.Payload))
-                        else:
-                            for cli in self.Tasks.ProgressClients:
-                                cli.write_message(json.dumps(self.Payload))
+                            #this sends it to the sync server, who will notify all connected clients about the progress
+                            self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/set_progress",self.Payload))
+
+
 
 
                         """

@@ -1,7 +1,7 @@
 #import tcpserver
-import AsyncTcpServer
+import WebImporter_Server
 if __name__ == '__main__':
     # Server = AsyncTcpServer.server()
     # Server.run()
-    Server = AsyncTcpServer.TornadoServer()
+    Server = WebImporter_Server.TornadoServer()
     Server.run()

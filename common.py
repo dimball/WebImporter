@@ -13,6 +13,8 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET
 
+import tornado
+
 class c_HelperFunctions():
     def StringToBool(self,input):
         if input == "True":
@@ -84,13 +86,30 @@ class c_HelperFunctions():
     #    #logging.debug("Replying with = %s",self.payload)
     #     sock.sendall(bytes(self.payload,encoding='utf8'))
     #
+    def m_NotifyClients(self,command, payload, Clients):
+        self.ClosedClients = []
+        for client in Clients:
+            logging.debug("Sending tasks to:%s", client)
+            try:
+                client.write_message(self.m_create_data(command, payload))
+            except:
+                self.ClosedClients.append(client)
+                logging.debug("client closed")
+
+        for client in self.ClosedClients:
+            Clients.remove(client)
+
     def m_reply(self,payload,websock):
         #####payload comes in as a dictionary. NOT AS A STRING####
 
         self.payload = json.dumps(payload)
        #logging.debug("Replying with = %s",self.payload)
         websock.write_message(self.payload)
-
+    def m_create_data(self, command, payload=0):
+        self.data = {}
+        self.data["command"] = command
+        self.data["payload"] = payload
+        return json.dumps(self.data)
     def m_SerialiseTaskList(self, aTaskJobs, Tasks, bReport=True):
         #this way we can add some extra information into the payload
         self.Data = {}
@@ -273,7 +292,6 @@ class c_HelperFunctions():
         self.Payload = Payload
         self.FileList = {}
         self.FileListOrder = []
-        logging.debug(type(self.Payload))
 
         for FileObj in self.Payload:
             if FileObj["type"] == "folder":

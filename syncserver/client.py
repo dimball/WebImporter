@@ -7,11 +7,11 @@ class Client(hfn.c_HelperFunctions):
         self.port = port
         self.Tasks = Tasks
 
-    def m_create_data(self, command, payload=0):
-        self.data = {}
-        self.data["command"] = command
-        self.data["payload"] = payload
-        return json.dumps(self.data)
+    # def m_create_data(self, command, payload=0):
+    #     self.data = {}
+    #     self.data["command"] = command
+    #     self.data["payload"] = payload
+    #     return json.dumps(self.data)
 
     def m_send(self, payload):
         # SOCK_STREAM == a TCP socket

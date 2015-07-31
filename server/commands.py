@@ -18,7 +18,7 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         self.Tasks = Tasks
 
     def run(self):
-        logging.debug("Create task type:%s", type(self.Payload))
+        #logging.debug("Create task type:%s", type(self.Payload))
         self.ID = str(uuid.uuid4())
         logging.debug("Creating task : %s", self.ID)
         self.Tasks.Jobs[self.ID] = dataclasses.c_Task(self.ID)
@@ -40,7 +40,7 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         self.Tasks.Jobs[self.ID].order = self.highestorderID+1
         self.Tasks.Jobs[self.ID].progress = -1
 
-        logging.debug("type: %s", type(self.Payload))
+        #logging.debug("type: %s", type(self.Payload))
         self.FileListData = self.FileExpand(self.ID,self.Payload)
 
         self.Tasks.Jobs[self.ID].filelist = self.FileListData[0]
@@ -54,7 +54,8 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         that other clients can see this as well.
         '''
         if self.Tasks.syncserver_client.connected:
-            self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data('/syncserver/v1/global/queue/task/put',self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks)))
+            self.Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put', self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks)))
+
 
         self.WriteJob(self.Tasks,self.ID)
 
