@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <style>
+      body { margin: 0px; padding: 20px; }
+      #received { width: 500px; height: 400px; border: 1px solid #dedede; overflow-y:scroll;}
+      #sent { width: 500px; } 
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script type="text/javascript" src="static/main.js"></script>
+  </head>
+  <body>
+  <h1>Web importer client</h1>
+
+  <p>Data received web importer app</p>
+  <div id="received">
+  </div>
+  <button id="clear">Clear</button>
+  
+  <p>Send data to web importer app</p>
+  <form id="sent">
+    <input type="text" id="cmd_value">
+    <button id="cmd_send">Send</button>
+  </form>
+  </body>
+</html>

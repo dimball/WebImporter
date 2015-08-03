@@ -20,7 +20,7 @@ import tornado.web
 import tornado.websocket
 import tornado.gen
 
-class c_ServerCommands():
+class c_ServerCommands(hfn.c_HelperFunctions):
     def m_setpriority(self,Payload):
         logging.debug("************Setting new priorities*************************")
         Tasks.Order = Payload
@@ -32,13 +32,19 @@ class c_ServerCommands():
             self.counter += 1
         self.counter = 0
         for ID in Tasks.Order:
-            logging.debug("[%s] Order:%s | ID:%s",Tasks.Jobs[ID].type,self.counter,ID)
+            logging.debug("[%s] Order:%s | ID:%s",Tasks.Jobs[ID].type, self.counter, ID)
             self.counter += 1
 
         #only do this if the queue is active
 
         if len(Tasks.LineManagers)>0:
             self.m_put_tasks_on_queue()
+
+
+        #notify clients
+
+        self.m_NotifyClients("/client/v1/local/queue/set_priority", Payload, Tasks.CommandClients)
+
     def m_setglobalpriority(self,Payload):
         if Tasks.syncserver_client.connected:
             Tasks.syncserver_client.m_send(Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/set_priority", Payload))
@@ -95,7 +101,7 @@ class c_ServerCommands():
                     if Tasks.Jobs[ID].type == "local":
                         if Tasks.Jobs[ID].IsComplete() == False:
                             Tasks.Jobs[ID].active = True
-                            Tasks.Jobs[ID].workerlist = {}
+                            #Tasks.Jobs[ID].workerlist = {}
                             Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
                             logging.debug("Activating task:%s", ID)
                 else:
@@ -114,9 +120,10 @@ class c_ServerCommands():
         self.aJobs = []
         for key,value in Tasks.Jobs.items():
             self.aJobs.append(key)
+
         self.Output["job"] = self.aJobs
         #logging.debug("sending : %s", json.dumps(self.Output))
-        Tasks.syncserver_client.m_reply(self.Output, self)
+        self.m_reply(self.Output, self)
     def m_pause_task(self,ID):
         Tasks.Jobs[ID].active = False
         self.Output["status"] = "Paused job " + ID
@@ -137,7 +144,7 @@ class c_ServerCommands():
                 if Tasks.Jobs[ID].IsComplete() == False:
                     logging.debug("Resuming Job : %s",ID)
                     Tasks.Jobs[ID].active = True
-                    Tasks.Jobs[ID].workerlist = {}
+                    #Tasks.Jobs[ID].workerlist = {}
                 else:
                     logging.debug("Cannot resume task: %s. Task is already complete. Restart Task if you want to do the job again", ID)
         else:
@@ -145,51 +152,28 @@ class c_ServerCommands():
             Tasks.syncserver_client.m_reply(self.Output,self.request)
 
         self.m_put_tasks_on_queue()
+class c_Client_testHandler(tornado.websocket.WebSocketHandler, c_ServerCommands):
+    def open(self):
+        logging.debug('New client connected. Sending all jobs to it')
+        ## send all data to the connected client
+    def on_message(self, data):
+        self.write_message("recieved:" + data)
+        if self.Command == "/webimporter/v1/queue/task/get_all":
+            ############################ GET TASK ############################
+            self.m_get_tasks()
+
+    def on_close(self):
+        logging.debug('connection closed')
+        self.Data = json.loads(data)
+        self.Command = self.Data["command"]
+        self.Payload = self.Data["payload"]
+
+
 class c_Client_ProgressHandler(tornado.websocket.WebSocketHandler):
     ### This is the Progress handler taking care of progress data coming FROM the client connecting to this web importer instance .... Only needed to register connecting clients
     ### status is now pushed to the clients connected to it.
-
-    """
-    def m_status(self):
-        if self.Payload in Tasks.Jobs:
-            if Tasks.Jobs[self.Payload].active:
-                if Tasks.Jobs[self.Payload].progress == -1:
-                    self.Output["status"] = "Not Started"
-                    self.Output["worker"] = {}
-                elif Tasks.Jobs[self.Payload].progress < 100.0 and Tasks.Jobs[self.Payload].progress > -1:
-                    self.Output["status"] = Tasks.Jobs[self.Payload].progress
-                    self.Output["worker"] = {}
-                    for worker,file in Tasks.Jobs[self.Payload].workerlist.items():
-                        self.Output["worker"][worker] = [] #job
-                        self.AddFile = {}
-                        for file, progress in file.items():
-                            self.Output["worker"][worker].append({file:progress})
-                            if progress < 100.0:
-                                self.AddFile[file] = progress
-                        Tasks.Jobs[self.Payload].workerlist[worker] = self.AddFile
-                elif Tasks.Jobs[self.Payload].progress == 100.0:
-                    self.Output["status"] = "Job Complete"
-
-                #self.write_message(json.dumps(self.Output))
-                Tasks.syncserver_client.m_reply(self.Output, self)
-            else:
-                if Tasks.Jobs[self.Payload].progress == 100.0:
-                    self.Output["status"] = "Job Complete"
-                    Tasks.syncserver_client.m_reply(self.Output, self)
-                else:
-                    if Tasks.Jobs[self.Payload].progress < 100.0 and Tasks.Jobs[self.Payload].progress > 0:
-                        self.Output["status"] = "Job paused"
-                        Tasks.syncserver_client.m_reply(self.Output, self)
-                    elif Tasks.Jobs[self.Payload].progress == -1:
-                        self.Output["status"] = "Not Started"
-
-                        Tasks.syncserver_client.m_reply(self.Output, self)
-                    else:
-                        self.Output["status"] = "In queue"
-                        Tasks.syncserver_client.m_reply(self.Output, self)
-    """
     def open(self):
-        #print('new connection')
+        print('new connection')
         Tasks.ProgressClients.append(self)
     def on_message(self, data):
         self.Data = json.loads(data)
@@ -199,12 +183,15 @@ class c_Client_ProgressHandler(tornado.websocket.WebSocketHandler):
     def on_close(self):
         logging.debug('connection closed')
         Tasks.ProgressClients.remove(self)
-class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions, c_ServerCommands):
+class c_IndexHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.render('webclient.html')
+class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerCommands):
     ### This is the COMMAND handler taking care of commands coming FROM the client connecting to this web importer instance. This is needed
     def open(self):
-        print('new connection')
+        logging.debug("Client connected")
         Tasks.CommandClients.append(self)
-        #self.write_message("connected")
+
     def on_message(self, data):
         self.Data = json.loads(data)
         self.Command = self.Data["command"]
@@ -283,6 +270,15 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFu
         elif self.Command == "/webimporter/v1/queue/put_tasks":
             ############################ PUT LOCAL TASKS ON LOCAL QUEUE ############################
             self.m_put_tasks_on_queue()
+        elif self.Command == "/webimporter/v1/local/queue/request":
+            logging.debug('New client connected. Sending all jobs to it')
+
+            ## send all data to the connected client
+            self.aJobs = []
+            for ID in Tasks.Order:
+                self.aJobs.append(Tasks.Jobs[ID])
+            self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients)
+
         elif self.Command == "/webimporter/v1/server/shutdown":
             ############################ SHUTDOWN SERVER ############################
             logging.debug("Shutting down server")
@@ -295,7 +291,7 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFu
     def on_close(self):
         print('connection closed')
         Tasks.CommandClients.remove(self)
-class c_SyncServer_CommandHandler(hfn.c_HelperFunctions, c_ServerCommands):
+class c_SyncServer_CommandHandler(c_ServerCommands):
     ### this is the command handler for messages coming FROM the sync server
     def on_message(self, ws, data):
         logging.debug("Message from the command SYNC SERVER was: %s", data)
@@ -310,9 +306,6 @@ class c_SyncServer_CommandHandler(hfn.c_HelperFunctions, c_ServerCommands):
             self.m_deSerializeTaskList(self.Payload, Tasks)
             ###push the new data to the client connected
             self.m_NotifyClients("/client/v1/local/queue/task/put",self.Payload, Tasks.CommandClients)
-            #Tasks.syncserver_client.m_send(self.m_create_data("/client/v1/local/queue/task/put", self.Payload))
-
-
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
             ############################ SET LOCAL PRIORITY ON TASKS ############################
             self.m_setpriority(self.Payload)
@@ -332,7 +325,6 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
         elif self.Command == "/webimporter/v1/global/queue/task/file/set_progress":
             logging.debug("Received FILE progress from syncserver:%s:%s", self.Payload["file"], self.Payload["progress"])
             Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].progress = self.Payload["progress"]
-
 class TornadoServer(hfn.c_HelperFunctions):
      def on_message(self, ws, message):
         logging.debug("Message to the client was: %s", message)
@@ -427,8 +419,12 @@ class TornadoServer(hfn.c_HelperFunctions):
      def run(self):
         app = tornado.web.Application(
         handlers=[
+            (r"/", c_IndexHandler),
             (r"/progress", c_Client_ProgressHandler),
-            (r"/command", c_Client_CommandHandler)
+            (r"/command", c_Client_CommandHandler),
+            (r"/static/(.*)", tornado.web.StaticFileHandler, {'path':  './'}),
+            (r"/test", c_Client_testHandler)
+
         ]
         )
         self.httpServer = tornado.httpserver.HTTPServer(app)

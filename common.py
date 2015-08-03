@@ -103,7 +103,7 @@ class c_HelperFunctions():
         #####payload comes in as a dictionary. NOT AS A STRING####
 
         self.payload = json.dumps(payload)
-       #logging.debug("Replying with = %s",self.payload)
+        logging.debug("Replying with = %s",self.payload)
         websock.write_message(self.payload)
     def m_create_data(self, command, payload=0):
         self.data = {}

@@ -118,7 +118,7 @@ class c_restart_task(threading.Thread, hfn.c_HelperFunctions):
             if self.Tasks.Jobs[ID].state == "ready":
                 if self.Tasks.Jobs[ID].active == False:
                     self.Tasks.Jobs[ID].active = True
-                    self.Tasks.Jobs[ID].workerlist = {}
+                    #self.Tasks.Jobs[ID].workerlist = {}
                     self.Tasks.Jobs[ID].ResetFileStatus()
                     self.Tasks.Jobs[ID].progress = -1
                     for folder in os.listdir(Tasks.WorkData["sTargetDir"] + ID):

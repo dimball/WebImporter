@@ -81,16 +81,16 @@ class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
                 #  check your fs's max buffer size
                 buf = fsrc.read(buffer_size)
                 if not buf:
-                    dict_Jobs[ID].workerlist[worker_name][sourcefile] = 100.0
+                    #dict_Jobs[ID].workerlist[worker_name][sourcefile] = 100.0
                     break
                 if dict_Jobs[ID].active == False:
                     logging.debug("Aborting file copy:%s", sourcefile)
                     break
                 fdst.write(buf)
                 count += len(buf)
-                dict_Jobs[ID].workerlist[worker_name][sourcefile] = (count/filesize)*100
+                #dict_Jobs[ID].workerlist[worker_name][sourcefile] = (count/filesize)*100
                 dict_Jobs[ID].filelist[sourcefile].progress = (count/filesize)*100
-                self.Payload["progress"] = dict_Jobs[ID].workerlist[worker_name][sourcefile]
+                self.Payload["progress"] = (count/filesize)*100
                 if filesize > 1024*1024*self.Tasks.WorkData["large_file_threshold"]:
                     for cli in Tasks.ProgressClients:
                         cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.Payload))
@@ -132,8 +132,8 @@ class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
 
                 if os.path.isfile(self.srcfile):
                     #logging.debug('%s ==> %s', self.srcfile, (self.dstfile))
-                    if self.worker_name in self.dict_Jobs[self.ID].workerlist == False:
-                        self.dict_Jobs[self.ID].workerlist[self.worker_name] = {}
+                    # if self.worker_name in self.dict_Jobs[self.ID].workerlist == False:
+                    #     self.dict_Jobs[self.ID].workerlist[self.worker_name] = {}
                     #self.copyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size)
                     self.customCopyFile(self.srcfile,self.dstfile,self.dict_Jobs[self.ID].filelist[self.srcfile].size, self.dict_Jobs, self.ID, self.worker_name, self.Tasks)
                     if self.dict_Jobs[self.ID].active == False:
@@ -220,7 +220,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                 if self.numLargeFiles > 0:
                     #dynamically adjust number of copy workers depending on the average size of files?
                     self.CopyWorkerName = "[" + self.manager_name + "] Large_Copy Worker"
-                    self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
+                    #self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
                     self.LargeCopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.large_worker_queue,self.result_queue, ">", self.Tasks)
                     self.LargeCopyWorkerProcess.start()
                     self.Threads[self.LargeCopyWorkerProcess.name] = (self.LargeCopyWorkerProcess)
@@ -233,7 +233,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
 
                     for i in range(self.NumSmallCopyWorkers):
                         self.CopyWorkerName = "[" + self.manager_name + "] Copy Worker_" + str(i)
-                        self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
+                        #self.dict_Jobs[self.ID].workerlist[self.CopyWorkerName] = {}
                         self.CopyWorkerProcess = c_CopyWorker(self.dict_Jobs, self.dict_Data,self.CopyWorkerName,self.worker_queue,self.result_queue, "<", self.Tasks)
                         self.CopyWorkerProcess.start()
                         self.aCopyWorkers.append(self.CopyWorkerProcess)

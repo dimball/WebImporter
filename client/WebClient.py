@@ -41,13 +41,17 @@ class client_progress_handler():
             logging.debug("Received TASK progress:%s:%s", self.Payload["ID"], self.Payload["progress"])
         elif self.Command == "/client/v1/local/queue/task/file/set_progress":
             logging.debug("Received FILE progress:%s:%s", self.Payload["file"], self.Payload["progress"])
+
 class client_command_handler():
+    ###this recieves messages from the web importer server.
     def on_message(self, ws, data):
         self.Data = json.loads(data)
         self.Command = self.Data["command"]
         self.Payload = self.Data["payload"]
         if self.Command == "/client/v1/local/queue/task/put":
             logging.debug("Received new TASK from webimporter:%s", self.Payload["TaskList"][0]["ID"])
+        elif self.Command == "/client/v1/local/queue/task/get":
+            logging.debug("Received Jobs from webimporter:%s", self.Payload["job"])
 
 
 
@@ -83,13 +87,12 @@ class threaded_Websocket_Client(threading.Thread, hfn.c_HelperFunctions):
     def m_send(self, payload,bDebug=True):
         self.connection.send(payload)
 
-def client(string):
+def Response_Client(string):
     connection = websocket.create_connection("ws://localhost:9090/command")
     connection.send(string)
     try:
         result = connection.recv()
         if result != "None":
-            #connection.close()
             return result
     except:
         return "None"
@@ -121,7 +124,7 @@ def create_copytask(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/task/create', aPayload))
 
 def modify_task(slot):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     JobList = ['c:/Data3']
     aPayload = []
     if dJobs != None:
@@ -142,104 +145,61 @@ def modify_task(slot):
                 data = {}
                 data["ID"] = aJobs[slot]
                 data["Payload"] = aPayload
-                response = client(CreateData('/webimporter/v1/queue/task/modify',data))
+                response = Client.m_send(CreateData('/webimporter/v1/queue/task/modify',data))
                 print(response)
         else:
             print("no jobs on server")
-def start_task(slot):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
+def start_task(Client,slot):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all',0))
 
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             if slot < len(aJobs):
-                response = client(CreateData('/webimporter/v1/queue/task/start', aJobs[slot]))
+                response = Client.m_send(CreateData('/webimporter/v1/queue/task/start', aJobs[slot]))
                 print(response)
         else:
             print("no jobs on server")
-"""
-def CheckStatus():
-    jobs_lookup = {}
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
-    if dJobs != None:
-        dJobs = json.loads(dJobs)
-        aJobs = dJobs["job"]
-        print("Number of active jobs:" + str(len(aJobs)-1))
-        for job in aJobs:
-            if job != "":
-                jobs_lookup[job] = True
 
-        WSProgress =  create_connection("ws://localhost:9090/progress")
 
-        while len(jobs_lookup)>0:
-            for job in aJobs:
-                if job in jobs_lookup:
-                    #response = client(CreateData('/webimporter/v1/queue/status',job))
-                    WSProgress.send(CreateData('/webimporter/v1/queue/status',job))
-                    response = WSProgress.recv()
-                    #print(response)
-                    if response != None:
-                        response = json.loads(response)
-
-                        if response["status"] == "Job Complete":
-                             del jobs_lookup[job]
-                             print("Job Complete")
-                        else:
-                            print("Task:" + str(response["status"]))
-                            if "worker" in response:
-                                if len(response["worker"]) > 0:
-
-                                    for worker,progress in response["worker"].items():
-                                        if len(progress) > 0:
-                                            print("\t\t" + worker)
-                                            for p in progress:
-                                                for file,progress in p.items():
-                                                    print("\t\t\t\t" + worker + " : " + file + " : " + str(progress))
-            time.sleep(0.5)
-
-        print("ended")
-    else:
-        print("No active jobs on server")
-"""
-
-def pause(slot):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
+def pause(Client,slot):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all',0))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if slot < len(aJobs):
-            client(CreateData('/webimporter/v1/queue/task/pause',aJobs[slot]))
-def resume(slot):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all',0))
+            Client.m_send(CreateData('/webimporter/v1/queue/task/pause',aJobs[slot]))
+def resume(Client,slot):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all',0))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             if slot < len(aJobs):
-                response = client(CreateData('/webimporter/v1/queue/task/resume', aJobs[slot]))
+                response = Client.m_send(CreateData('/webimporter/v1/queue/task/resume', aJobs[slot]))
         else:
             print("no jobs on server")
 
-def pausequeue():
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def pausequeue(Client):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         for j in aJobs:
             if j != "":
-                client(CreateData('/webimporter/v1/queue/task/pause',j))
-def resumequeue():
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+                Client.m_send(CreateData('/webimporter/v1/queue/task/pause',j))
+def resumequeue(Client):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             for j in aJobs:
                 if j != "":
-                    client(CreateData('/webimporter/v1/queue/task/resume', j))
+                    Client.m_send(CreateData('/webimporter/v1/queue/task/resume', j))
 def startqueue(Client):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
@@ -248,36 +208,36 @@ def startqueue(Client):
                 if j != "":
                     Client.m_send(CreateData('/webimporter/v1/queue/task/start', j))
                     #time.sleep(1)
-def removecompleted():
-    aJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def removecompleted(Client):
+    aJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if aJobs != None:
         aJobs = aJobs.split("|")
         if len(aJobs)>0:
-            client(CreateData('remove_completed_tasks'))
+            Client.m_send(CreateData('remove_completed_tasks'))
     else:
         print("No tasks on server")
-def removeincompletetasks():
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def removeincompletetasks(Client):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         print(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
-            client(CreateData('/webimporter/v1/queue/task/remove_incomplete'))
+            Client.m_send(CreateData('/webimporter/v1/queue/task/remove_incomplete'))
     else:
         print("No tasks on server")
-def restart_tasks():
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def restart_tasks(Client):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
             for j in aJobs:
                 if j != "":
-                    client(CreateData('/webimporter/v1/queue/task/restart', j))
+                    Client.m_send(CreateData('/webimporter/v1/queue/task/restart', j))
                     #time.sleep(1)
-def modify(slot):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def modify(Client, slot):
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
     if dJobs != None:
         aJobs = json.loads(dJobs)
         aJobs = aJobs["job"]
@@ -300,16 +260,18 @@ def modify(slot):
                 data = {}
                 data["ID"] = aJobs[slot]
                 data["Payload"] = aPayload
-                response = client(CreateData('/webimporter/v1/queue/task/modify', data))
+                response = Client.m_send(CreateData('/webimporter/v1/queue/task/modify', data))
         else:
             print("no jobs on server")
 
 
-def setpriority(prioritylist):
-    dJobs = client(CreateData('/webimporter/v1/queue/task/get_all'))
+def setpriority(Client, prioritylist):
+
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
+    logging.debug("recieving:%s",dJobs)
     if dJobs != None:
-        aJobs = json.loads(dJobs)
-        aJobs = aJobs["job"]
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
         if len(aJobs)>0:
             print("Current Jobs:")
             counter = 0
@@ -324,14 +286,14 @@ def setpriority(prioritylist):
                 print(str(counter) + ":" + job)
                 counter += 1
 
-    client(CreateData('/webimporter/v1/global/queue/set_priority', aJobs))
-def shutdown():
-    client(CreateData('/webimporter/v1/server/shutdown'))
+            Client.m_send(CreateData('/webimporter/v1/global/queue/set_priority', aJobs))
+def shutdown(Client):
+    Client.m_send(CreateData('/webimporter/v1/server/shutdown'))
 
 def activate_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/activate'))
-def deactivate_queue():
-    client(CreateData('/webimporter/v1/queue/deactivate'))
+def deactivate_queue(Client):
+    Client.m_send(CreateData('/webimporter/v1/queue/deactivate'))
 def put_tasks_on_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/put_tasks'))
 if __name__ == "__main__":
@@ -340,11 +302,11 @@ if __name__ == "__main__":
     #setpriority([])
     # create_copytask()
     # #create_copytask()
-    create_copytask(CommandHandler)
-    time.sleep(4)
-    startqueue(CommandHandler)
-    put_tasks_on_queue(CommandHandler)
-    activate_queue(CommandHandler)
+    #create_copytask(CommandHandler)
+    # time.sleep(4)
+    # startqueue(CommandHandler)
+    # put_tasks_on_queue(CommandHandler)
+    # activate_queue(CommandHandler)
     #deactivate_queue()
     # time.sleep(5)
     #pausequeue()
@@ -355,7 +317,7 @@ if __name__ == "__main__":
     # time.sleep(2)
    #CheckStatus()
 
-    #setpriority([])
+    setpriority(CommandHandler, [])
     #deactivate_queue()
     #removeincompletetasks()
     #removecompleted()

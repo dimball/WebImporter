@@ -16,7 +16,7 @@ class c_Task():
         self.state = "ready"
         self.active = False
         self.progress = 0
-        self.workerlist = {}
+        #self.workerlist = {}
         self.filelist = {}
         self.filelistOrder = []
         self.metadata = {}
