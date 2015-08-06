@@ -15,7 +15,6 @@ $(document).ready(function(){
             return false
         }
     }
-
     function m_deSerializeTaskList(Payload)
     {
         Tasks.Order = Payload["Order"]
@@ -89,7 +88,12 @@ $(document).ready(function(){
             }
         };
     }
+    socket.onopen = function(message) {
 
+    //    send request for tasks
+        console.log("Connection open")
+        socket.send(m_create_data("/webimporter/v1/local/queue/request"))
+    }
     socket.onmessage = function (message) {
 
         var Data = JSON.parse(message.data)
@@ -114,22 +118,14 @@ $(document).ready(function(){
 
 
     };
-    socket.onopen = function(message) {
-
-    //    send request for tasks
-        console.log("Connection open")
-        socket.send(m_create_data("/webimporter/v1/local/queue/request"))
-    }
     socket.onclose = function(){
+      received.empty();
       console.log("disconnected");
     };
-
     var sendMessage = function(message) {
       console.log("sending:" + message.data);
       socket.send(message.data);
     };
-
-
     // GUI Stuff
     // send a command to the serial port
     $("#cmd_send").click(function(ev){

@@ -302,7 +302,7 @@ if __name__ == "__main__":
     #setpriority([])
     # create_copytask()
     # #create_copytask()
-    #create_copytask(CommandHandler)
+    create_copytask(CommandHandler)
     # time.sleep(4)
     # startqueue(CommandHandler)
     # put_tasks_on_queue(CommandHandler)
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     # time.sleep(2)
    #CheckStatus()
 
-    setpriority(CommandHandler, [])
+    #setpriority(CommandHandler, [])
     #deactivate_queue()
     #removeincompletetasks()
     #removecompleted()

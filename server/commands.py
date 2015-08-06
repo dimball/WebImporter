@@ -54,7 +54,7 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         that other clients can see this as well.
         '''
         if self.Tasks.syncserver_client.connected:
-            self.Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put', self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks)))
+            self.Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put', self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks)), self.Tasks)
 
 
         self.WriteJob(self.Tasks,self.ID)

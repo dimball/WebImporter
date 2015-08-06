@@ -26,6 +26,9 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
     ### Handles progress data sent from the webimporterServer client. This is then used to notify all clients connected
     ### to this progress handler in the Tasks.ProgressClients list
 
+    def check_origin(self, origin):
+        self.m_StoreClient(origin, Tasks, "progress", False)
+        return True
     def m_setTaskProgress(self,ID,progress):
         if ID in Tasks.Jobs:
             if progress > Tasks.Jobs[ID].progress:
@@ -35,7 +38,7 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
                 self.SendData = {}
                 self.SendData["ID"] = ID
                 self.SendData["progress"] = progress
-                self.m_NotifyClients("/webimporter/v1/global/queue/task/set_progress", self.SendData, Tasks.ProgressClients)
+                self.m_NotifyClients("/webimporter/v1/global/queue/task/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
 
     def m_setFileProgress(self,ID, file, progress):
         if ID in Tasks.Jobs:
@@ -47,7 +50,7 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
                 self.SendData["ID"] = ID
                 self.SendData["progress"] = progress
                 self.SendData["file"] = file
-                self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients)
+                self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
 
     def open(self):
         logging.debug('Syncserver new progress connection')
@@ -64,9 +67,9 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
             logging.debug('Progress data: %s', self.Payload)
             self.m_setFileProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
     def on_close(self):
-        print('connection closed')
+        logging.debug('Progress socket connection closed %s', Tasks.GetClientNameFromHandler(self))
         Tasks.ProgressClients.remove(self)
-
+        Tasks.RemoveHandlerFromClientList(self)
 
 class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
     ###Handles all commands coming in from the webimporterServer client. Anything that needs to be communicated to
@@ -92,6 +95,9 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             self.Output.append(self.TaskData)
 
         self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
+    def check_origin(self, origin):
+        self.m_StoreClient(origin, Tasks, "command")
+        return True
     def open(self):
         logging.debug('new command connection from %s', self)
         Tasks.CommandClients.append(self)
@@ -110,42 +116,40 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             #request in the first place.
 
             logging.debug("number of global tasks:%s", len(Tasks.Jobs))
-            self.m_deSerializeTaskList(self.Payload, Tasks)
+            self.m_deSerializeTaskList(self.Payload, Tasks, self)
             self.IncomingTasks = []
             if len(self.Payload["TaskList"])>0:
                 for data in self.Payload["TaskList"]:
                     self.IncomingTasks.append(Tasks.Jobs[data["ID"]])
-                    logging.debug("Adding a task to the global list from:")
-
+                    logging.debug("Adding a task to the global list from:%s", Tasks.GetClientNameFromHandler(self))
                     # if not self.m_Is_ID_In_List(Tasks.Order,data["ID"]):
 
             #only send the job you have received to other clients other than the one who sent this in the first place
-            logging.debug(Tasks.CommandClients)
-            self.m_NotifyClients("/webimporter/v1/global/queue/put",self.m_SerialiseTaskList(self.IncomingTasks, Tasks), Tasks.CommandClients)
+            self.m_NotifyClients("/webimporter/v1/global/queue/put",self.m_SerialiseTaskList(self.IncomingTasks, Tasks), Tasks.CommandClients, Tasks)
         elif self.Command == "/syncserver/v1/global/queue/task/put_no_reply":
             logging.debug("number of global tasks:%s", len(Tasks.Jobs))
-            logging.debug("Adding %s tasks to the global list from:", len(self.Payload["TaskList"]))
-            self.m_deSerializeTaskList(self.Payload, Tasks)
+            logging.debug("Adding %s tasks to the global list from: %s", len(Tasks.Jobs), Tasks.GetClientNameFromHandler(self))
+            self.m_deSerializeTaskList(self.Payload, Tasks, self)
 
         elif self.Command == "/syncserver/v1/global/queue/task/get_IDs":
             self.output = []
             for ID in Tasks.Jobs:
                 self.output.append(ID)
             logging.debug(json.dumps(self.output))
-            self.write_message(json.dumps(self.output))
+            self.write_message(self.m_create_data("/syncserver/v1/global/register", self.output))
             #self.write_message(json.dumps(self.output).encode("utf-8"))
 
         elif self.Command == "/syncserver/v1/global/queue/task/request":
             ############################ GET TASK  ############################
-            logging.debug("Sending requested Task IDs to client:")
+            logging.debug("Sending requested Task IDs to client:%s", Tasks.GetClientNameFromHandler(self))
             self.SendJobs = []
             for ID in self.Payload:
                 self.SendJobs.append(Tasks.Jobs[ID])
 
-            self.m_reply(self.m_SerialiseTaskList(self.SendJobs, Tasks, False), self)
+            self.m_reply(self.m_create_data("/webimporter/v1/global/queue/put", self.m_SerialiseTaskList(self.SendJobs, Tasks, False) ), self)
         elif self.Command == "/syncserver/v1/global/queue/task/get":
             ############################ GET TASK  ############################
-            logging.debug("Sending tasks to client:%s", self)
+            logging.debug("Sending tasks to client:%s", Tasks.GetClientNameFromHandler(self))
             self.m_reply(self.m_SerialiseSyncTasks(Tasks, False), self)
         elif self.Command == "/syncserver/v1/global/queue/task/set_progress":
             ############################ SET PROGRESS ############################
@@ -162,31 +166,22 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             for Data in self.data:
                 Tasks.Order.append(Data)
 
-            self.m_NotifyClients("/webimporter/v1/local/queue/set_priority", Tasks.Order, Tasks.CommandClients)
+            self.m_NotifyClients("/webimporter/v1/local/queue/set_priority", Tasks.Order, Tasks.CommandClients, Tasks)
 
         elif self.Command == "/syncserver/v1/global/queue/get_priority":
             ############################ GET PRIORITY ############################
             self.m_getpriority()
         elif self.Command == "/syncserver/v1/server/register":
             ############################ REGISTER ############################
-            self.client = {}
-            self.client["ip"] = self.client_address[0]
-            self.client["port"] = int(self.Payload)
-            self.bFoundClient = False
-            for cl in Tasks.clientlist:
-                if cl["ip"] == self.client_address[0] and cl["port"] == int(self.Payload):
-                    self.bFoundClient = True
+            self.m_reply(self.m_SerialiseSyncTasks(Tasks, False), self)
 
-            if self.bFoundClient == False:
-                logging.debug("Registering client:%s:%s", self.client_address[0],self.Payload)
-                Tasks.clientlist.append(self.client)
-            else:
-                logging.debug("[%s:%s]Client already exists", self.client_address[0],self.Payload)
-        elif self.Command == "/syncserver/v1/server/isconnected":
-            ############################ IS CONNECTED ############################
-            self.Output = {}
-            self.Output["status"] = "OK"
-            #self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
+
+
+        # elif self.Command == "/syncserver/v1/server/isconnected":
+        #     ############################ IS CONNECTED ############################
+        #     self.Output = {}
+        #     self.Output["status"] = "OK"
+        #     #self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         elif self.Command == "/syncserver/v1/server/shutdown":
             ############################ SHUTDOWN ############################
             logging.debug("Shutting down server")
@@ -196,8 +191,20 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         #self.write_message('got it!')
 
     def on_close(self):
-        print('tornado server connection closed %s', self)
+        logging.debug('Command socket connection closed: %s', Tasks.GetClientNameFromHandler(self))
         Tasks.CommandClients.remove(self)
+        ## remove the tasks that have the handler attached to it.
+        self.aRemove = []
+        for ID in Tasks.Jobs:
+            if Tasks.Jobs[ID].WSHandler == self:
+                self.aRemove.append(ID)
+
+        for ID in self.aRemove:
+            logging.debug("Removing Job:%s", ID)
+            del Tasks.Jobs[ID]
+
+        Tasks.RemoveHandlerFromClientList(self)
+        print(Tasks.clientlist)
 class SyncServer(hfn.c_HelperFunctions):
     def __init__(self):
         global Tasks

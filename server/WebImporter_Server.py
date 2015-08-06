@@ -19,7 +19,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import tornado.gen
-
+import time
 class c_ServerCommands(hfn.c_HelperFunctions):
     def m_setpriority(self,Payload):
         logging.debug("************Setting new priorities*************************")
@@ -169,11 +169,15 @@ class c_Client_testHandler(tornado.websocket.WebSocketHandler, c_ServerCommands)
         self.Payload = self.Data["payload"]
 
 
-class c_Client_ProgressHandler(tornado.websocket.WebSocketHandler):
+class c_Client_ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
     ### This is the Progress handler taking care of progress data coming FROM the client connecting to this web importer instance .... Only needed to register connecting clients
     ### status is now pushed to the clients connected to it.
+    def check_origin(self, origin):
+        self.m_StoreClient(origin, Tasks, "progress", False)
+        return True
+
     def open(self):
-        print('new connection')
+        logging.debug('new progress connection')
         Tasks.ProgressClients.append(self)
     def on_message(self, data):
         self.Data = json.loads(data)
@@ -188,6 +192,10 @@ class c_IndexHandler(tornado.web.RequestHandler):
         self.render('webclient.html')
 class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerCommands):
     ### This is the COMMAND handler taking care of commands coming FROM the client connecting to this web importer instance. This is needed
+
+    def check_origin(self, origin):
+        self.m_StoreClient(origin, Tasks, "command")
+        return True
     def open(self):
         logging.debug("Client connected")
         Tasks.CommandClients.append(self)
@@ -277,7 +285,7 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             self.aJobs = []
             for ID in Tasks.Order:
                 self.aJobs.append(Tasks.Jobs[ID])
-            self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients)
+            self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients, Tasks)
 
         elif self.Command == "/webimporter/v1/server/shutdown":
             ############################ SHUTDOWN SERVER ############################
@@ -305,10 +313,58 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             logging.debug("Received tasks from syncserver:%s", len(self.Payload["TaskList"]))
             self.m_deSerializeTaskList(self.Payload, Tasks)
             ###push the new data to the client connected
-            self.m_NotifyClients("/client/v1/local/queue/task/put",self.Payload, Tasks.CommandClients)
+            self.m_NotifyClients("/client/v1/local/queue/task/put",self.Payload, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
             ############################ SET LOCAL PRIORITY ON TASKS ############################
             self.m_setpriority(self.Payload)
+        elif self.Command == "/syncserver/v1/global/register":
+
+            #Tasks.SimpleClient = cl.simple_connection(Tasks, "command")
+            #self.response = Tasks.SimpleClient.m_request(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
+#            logging.debug("reply:%s", self.response)
+            self.dictID = {}
+            self.GetTask = []
+            self.SendTask = []
+            for ID in self.Payload:
+                self.dictID[ID] = ID
+                #tasks that I do not have
+                if not ID in Tasks.Order:
+                    self.GetTask.append(ID)
+
+            for ID in Tasks.Order:
+                if not ID in self.dictID:
+                    self.SendTask.append(Tasks.Jobs[ID])
+
+            logging.debug("Uploading tasks:%s | Downloading tasks:%s", len(self.SendTask), len(self.GetTask))
+            #if I have some jobs that you do not have, then send them only. the sent tasks will be appended to the global list.
+
+            if len(self.SendTask) > 0:
+                logging.debug("Sending tasks that do not exists on sync server:%s", len(self.SendTask))
+                Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put_no_reply', self.m_SerialiseTaskList(self.SendTask, Tasks)))
+
+            if len(self.GetTask)>0:
+                #request only the jobs that i need
+                Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/request', self.GetTask))
+                #the data will come back with an dictionary with a list of the order of the IDs and the a list of the data that we requested
+                self.m_deSerializeTaskList(json.loads(self.response), Tasks)
+
+            self.m_show_tasks(Tasks)
+            Tasks.ready = True
+    def on_close(self):
+        self.aRemove = []
+        for ID in Tasks.Jobs:
+            if Tasks.Jobs[ID].type == "global":
+                self.aRemove.append(ID)
+
+        for ID in self.aRemove:
+            del Tasks.Jobs[ID]
+
+        logging.debug("Disconnected from Syncserver command socket. Attempting to reconnect")
+        while Tasks.syncserver_client.connected == False:
+            Tasks.syncserver_client.m_connect(False)
+            time.sleep(0.5)
+        Tasks.syncserver_client.connection.send(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
+
 class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
     ###this is the progress handler for messages coming FROM the sync server
 
@@ -325,6 +381,14 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
         elif self.Command == "/webimporter/v1/global/queue/task/file/set_progress":
             logging.debug("Received FILE progress from syncserver:%s:%s", self.Payload["file"], self.Payload["progress"])
             Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].progress = self.Payload["progress"]
+
+    def on_close(self):
+        logging.debug("Disconnected from Syncserver Progress socket. Attempting to reconnect")
+        while Tasks.syncserver_progress_client.connected == False:
+            Tasks.syncserver_progress_client.m_connect(False)
+            time.sleep(0.5)
+
+
 class TornadoServer(hfn.c_HelperFunctions):
      def on_message(self, ws, message):
         logging.debug("Message to the client was: %s", message)
@@ -437,39 +501,10 @@ class TornadoServer(hfn.c_HelperFunctions):
             #send all the jobs that has been read locally to the sync server. Do not get anything in return
 
             #ask the sync server what jobs do you have. Only send IDs, do not send anything else
-
-            Tasks.SimpleClient = cl.simple_connection(Tasks, "command")
-            self.response = Tasks.SimpleClient.m_request(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
-#            logging.debug("reply:%s", self.response)
-            self.dictID = {}
-            self.GetTask = []
-            self.SendTask = []
-
-            self.response = json.loads(self.response)
-            for ID in self.response:
-                self.dictID[ID] = ID
-                #tasks that I do not have
-                if not ID in Tasks.Order:
-                    self.GetTask.append(ID)
-
-            for ID in Tasks.Order:
-                if not ID in self.dictID:
-                    self.SendTask.append(Tasks.Jobs[ID])
-
-            logging.debug("Uploading tasks:%s | Downloading tasks:%s", len(self.SendTask), len(self.GetTask))
-            #if I have some jobs that you do not have, then send them only. the sent tasks will be appended to the global list.
-
-            if len(self.SendTask) > 0:
-                logging.debug("Sending tasks that do not exists on sync server:%s", len(self.SendTask))
-                Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put_no_reply', self.m_SerialiseTaskList(self.SendTask, Tasks)))
-
-            if len(self.GetTask)>0:
-                #request only the jobs that i need
-                self.response = Tasks.SimpleClient.m_request(self.m_create_data('/syncserver/v1/global/queue/task/request', self.GetTask))
-                #the data will come back with an dictionary with a list of the order of the IDs and the a list of the data that we requested
-                self.m_deSerializeTaskList(json.loads(self.response), Tasks)
-
-            self.m_show_tasks(Tasks)
+            Tasks.ready = False
+            Tasks.syncserver_client.connection.send(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
+            while not Tasks.ready:
+                continue
 
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
         logging.debug("starting mainloop")

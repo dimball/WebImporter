@@ -1,8 +1,6 @@
 import stat
 import os
 import dataclasses
-import socket
-import select
 import json
 import logging
 logging.basicConfig(level=logging.DEBUG,
@@ -13,8 +11,7 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET
 
-import tornado
-
+import urllib
 class c_HelperFunctions():
     def StringToBool(self,input):
         if input == "True":
@@ -25,72 +22,29 @@ class c_HelperFunctions():
         for ID in Tasks.Order:
             logging.debug("[%s] ID:%s Files:%s Progress:%s", Tasks.Jobs[ID].type, ID, len(Tasks.Jobs[ID].filelist), Tasks.Jobs[ID].progress )
 
-    # def m_process_tasks_from_syncserver(self, Payload, Tasks):
-    #     self.Payload = json.loads(Payload)
-    #
-    #     if len(self.Payload)>0:
-    #         Tasks.Order = []
-    #         self.counter = 1
-    #
-    #         for Data in self.Payload:
-    #
-    #             Tasks.Order.append(Data["ID"])
-    #             if not Data["ID"] in Tasks.Jobs:
-    #                 Tasks.Jobs[Data["ID"]] = dataclasses.c_Task(Data["ID"])
-    #                 print(Data["Data"]["type"])
-    #                 Tasks.Jobs[Data["ID"]].type = Data["Data"]["type"]
-    #             Tasks.Jobs[Data["ID"]].order = self.counter
-    #             Tasks.Jobs[Data["ID"]].progress = Data["Data"]["progress"]
-    #             Tasks.Jobs[Data["ID"]].metadata = Data["Data"]["metadata"]
-    #             self.counter += 1
-    #
-    #         # if Data["report"]:
-    #         for ID in Tasks.Order:
-    #             if Tasks.Jobs[ID].type == "local":
-    #                 logging.debug("Loading LOCAL task:[%s] %s : %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
-    #             else:
-    #                 logging.debug("Loading GLOBAL task from sync server:[%s] %s. %s percent complete", Tasks.Jobs[ID].order, ID, Tasks.Jobs[ID].progress)
+    def m_StoreClient(self, origin, Tasks, sType, bUpdateTasks = True):
+        parsed_origin = urllib.parse.urlparse(origin)
+        logging.debug("Client logged in from: %s", parsed_origin.netloc + "/" + sType)
+        if not parsed_origin.netloc in Tasks.clientlist:
+            Tasks.clientlist[parsed_origin.netloc + "/" + sType] = self
+        else:
+            if bUpdateTasks:
+                #if it is already in the dictionary then change all the existing tasks that has this command handler attached to it, to the new one.
+                logging.debug(Tasks.Jobs)
+                for ID in Tasks.Jobs:
+                    logging.debug("ID is:%s", ID)
+                    if Tasks.Jobs[ID].WSHandler == Tasks.clientlist[parsed_origin.netloc + "/" + sType]:
+                        Tasks.Jobs[ID].WSHandler = self
 
-    # def m_SerializeTask(self,Task,bReport=True):
-    #     self.output = []
-    #     self.TaskData = {}
-    #     self.TaskData["ID"] = Task.TaskID
-    #     self.TaskData["report"] = bReport
-    #     self.TaskData["Data"] = {}
-    #     if Task.type == "local":
-    #         self.TaskData["Data"]["progress"] = Task.GetCurrentProgress()
-    #     else:
-    #         self.TaskData["Data"]["progress"] = Task.progress
-    #
-    #     self.TaskData["Data"]["type"] = "global"
-    #     self.TaskData["Data"]["metadata"] = Task.metadata
-    #     self.TaskData["Data"]["filelist"] = {}
-    #     self.TaskData["Data"]["filelistOrder"] = Task.filelistOrder
-    #     for file in Task.filelistOrder:
-    #         self.FileData = {}
-    #         self.FileData["progress"] = Task.filelist[file].progress
-    #         self.FileData["copied"] = Task.filelist[file].copied
-    #         self.FileData["delete"] = Task.filelist[file].delete
-    #         self.FileData["size"] = Task.filelist[file].size
-    #         self.FileData["uploaded"] = Task.filelist[file].uploaded
-    #         self.TaskData["Data"]["filelist"][file] = self.FileData
-    #
-    #     self.output.append(self.TaskData)
-    #     return self.output
-    # def m_reply(self,payload,sock):
-    #     #####payload comes in as a dictionary. NOT AS A STRING####
-    #
-    #     self.payload = json.dumps(payload)
-    #     self.SizeOfData = len(self.payload)
-    #     self.payload = str(self.SizeOfData) + "|" + self.payload
-    #    #logging.debug("Replying with = %s",self.payload)
-    #     sock.sendall(bytes(self.payload,encoding='utf8'))
-    #
-    def m_NotifyClients(self,command, payload, Clients):
+    def m_NotifyClients(self,command, payload, Clients, Tasks=None):
         self.ClosedClients = []
         for client in Clients:
-            logging.debug("Sending tasks to:%s", client)
             try:
+                if Tasks != None:
+                    logging.debug("Sending tasks to:%s", Tasks.GetClientNameFromHandler(client))
+                else:
+                    logging.debug("Sending tasks to:%s", client)
+
                 client.write_message(self.m_create_data(command, payload))
             except:
                 self.ClosedClients.append(client)
@@ -103,7 +57,7 @@ class c_HelperFunctions():
         #####payload comes in as a dictionary. NOT AS A STRING####
 
         self.payload = json.dumps(payload)
-        logging.debug("Replying with = %s",self.payload)
+        #logging.debug("Replying with = %s",self.payload)
         websock.write_message(self.payload)
     def m_create_data(self, command, payload=0):
         self.data = {}
@@ -142,7 +96,7 @@ class c_HelperFunctions():
 
             self.Data["TaskList"].append(self.TaskData)
         return self.Data
-    def m_deSerializeTaskList(self, Payload, Tasks):
+    def m_deSerializeTaskList(self, Payload, Tasks, WSHandler=None):
         #converts the incoming data from json format into the internal data structure of classes
         Tasks.Order = Payload["Order"]
         logging.debug("deSerializing %s tasks", len(Payload["TaskList"]))
@@ -163,41 +117,44 @@ class c_HelperFunctions():
                 Tasks.Jobs[Task["ID"]].filelist[file].delete = self.StringToBool(Task["Data"]["filelist"][file]["delete"])
                 Tasks.Jobs[Task["ID"]].filelist[file].uploaded = self.StringToBool(Task["Data"]["filelist"][file]["uploaded"])
 
+            if WSHandler != None:
+                Tasks.Jobs[Task["ID"]].WSHandler = WSHandler
+
             logging.debug("deSerialized task:%s", Task["ID"])
-    def m_receive_all(self, sock):
-        self.HeaderLength = 32
-        self.PackageLength = 1024
-        self.data = ""
-
-        self.data = sock.recv(self.HeaderLength).decode('utf8')
-
-        if self.data != "":
-
-            self.length = self.data.split("|")[0]
-            self.SizeOfHeader = len(self.length)+1 # +1 is the "|" character
-            self.data = self.data.split("|")[1]
-            self.currentlength = self.HeaderLength-self.SizeOfHeader
-            while True:
-                #logging.debug(self.currentlength)
-                if (int(self.length)-self.currentlength)<self.PackageLength:
-                    #logging.debug("reading half:%s",int(self.length)-self.currentlength)
-                    if int(self.length)-self.currentlength < 0:
-                        self.line = sock.recv(int(self.length)).decode('utf8')
-                    else:
-                        self.line = sock.recv((int(self.length)-self.currentlength)).decode('utf8')
-                    #logging.debug(self.line)
-                else:
-                    #logging.debug("reading full")
-                    self.line = sock.recv(self.PackageLength).decode('utf8')
-
-                self.data += self.line
-                self.currentlength += len(self.line)
-
-                if self.currentlength >= int(self.length):
-                    break
-
-            #logging.debug(len(self.data))
-        return self.data
+    # def m_receive_all(self, sock):
+    #     self.HeaderLength = 32
+    #     self.PackageLength = 1024
+    #     self.data = ""
+    #
+    #     self.data = sock.recv(self.HeaderLength).decode('utf8')
+    #
+    #     if self.data != "":
+    #
+    #         self.length = self.data.split("|")[0]
+    #         self.SizeOfHeader = len(self.length)+1 # +1 is the "|" character
+    #         self.data = self.data.split("|")[1]
+    #         self.currentlength = self.HeaderLength-self.SizeOfHeader
+    #         while True:
+    #             #logging.debug(self.currentlength)
+    #             if (int(self.length)-self.currentlength)<self.PackageLength:
+    #                 #logging.debug("reading half:%s",int(self.length)-self.currentlength)
+    #                 if int(self.length)-self.currentlength < 0:
+    #                     self.line = sock.recv(int(self.length)).decode('utf8')
+    #                 else:
+    #                     self.line = sock.recv((int(self.length)-self.currentlength)).decode('utf8')
+    #                 #logging.debug(self.line)
+    #             else:
+    #                 #logging.debug("reading full")
+    #                 self.line = sock.recv(self.PackageLength).decode('utf8')
+    #
+    #             self.data += self.line
+    #             self.currentlength += len(self.line)
+    #
+    #             if self.currentlength >= int(self.length):
+    #                 break
+    #
+    #         #logging.debug(len(self.data))
+    #     return self.data
     def m_Is_ID_In_List(self,list,ID):
         self.bIsFound = False
         for CheckID in list:

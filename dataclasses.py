@@ -9,7 +9,8 @@ class c_file():
 
 
 class c_Task():
-    def __init__(self,ID):
+    def __init__(self, ID):
+        self.WSHandler = None
         self.order = 0
         self.globalorder = 0
         self.TaskID = str(ID)
@@ -52,10 +53,27 @@ class c_basedata():
         self.CommandClients = []
         self.ProgressClients = []
         self.MainLoop = None
+        self.clientlist = {}
+
+    def GetClientNameFromHandler(self, Handle):
+        for host, handler in self.clientlist.items():
+            if handler == Handle:
+                return host
+        return "None"
+    def RemoveHandlerFromClientList(self, Handle):
+        self.NewList = {}
+        for host, handler in self.clientlist.items():
+            if handler != Handle:
+                self.NewList[host] = handler
+
+        self.clientlist = self.NewList
+
+
+
+
 class c_SyncServerData(c_basedata):
     def __init__(self):
         c_basedata.__init__(self)
-        self.clientlist = []
 
 class c_ServerData(c_basedata):
     def __init__(self):
@@ -64,4 +82,4 @@ class c_ServerData(c_basedata):
         self.LineManagers = []
         self.syncserver_client = None
         self.syncserver_progress_client = None
-        self.SimpleClient = None
+        self.ready = True
