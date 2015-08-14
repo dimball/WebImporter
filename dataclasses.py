@@ -1,6 +1,14 @@
 import queue
+class c_uploadTask():
+    def __init__(self, file, ParentTask, FileTask):
+        self.ParentTask = ParentTask
+        self.FileTask = FileTask
+        self.file = file
+        self.state = "queued"
+        self.progress = 0.0
+
 class c_file():
-    def __init__(self,size):
+    def __init__(self, size):
         self.progress = 0
         self.copied = False
         self.delete = False
@@ -12,15 +20,13 @@ class c_Task():
     def __init__(self, ID):
         self.WSHandler = None
         self.order = 0
-        self.globalorder = 0
         self.TaskID = str(ID)
         self.state = "ready"
         self.active = False
         self.progress = 0
-        #self.workerlist = {}
         self.filelist = {}
         self.filelistOrder = []
-        self.metadata = {}
+        self.metadata = []
         self.type = "local"
 
 
@@ -79,7 +85,9 @@ class c_ServerData(c_basedata):
     def __init__(self):
         c_basedata.__init__(self)
         self.task_queue = queue.Queue()
+        self.upload_queue = queue.Queue()
         self.LineManagers = []
+        self.UploadManagers = []
         self.syncserver_client = None
         self.syncserver_progress_client = None
         self.ready = True

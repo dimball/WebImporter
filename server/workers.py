@@ -5,6 +5,7 @@ import common as hfn
 import threading
 import queue
 import logging
+import dataclasses
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
@@ -66,6 +67,7 @@ class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
         try:
             fsrc = open(sourcefile, 'rb')
             fdst = open(destinationfile, 'wb')
+
             self.buffer_size = min(buffer_size,filesize)
             if(buffer_size == 0):
                 buffer_size = 1024
@@ -275,12 +277,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         self.OldQueueSize = self.CurrentQueueSize
                         #send progress to the sync server here?
                         #the tasks processed here are only the local ones.
-
-
-
                         #sends progress data to the sync server so that all other clients will get notified of the progress too.
-
-
                         for cli in self.Tasks.ProgressClients:
                             cli.write_message(self.m_create_data("/client/v1/local/queue/task/set_progress", self.Payload))
 
@@ -303,23 +300,16 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         if self.Tasks.syncserver_client.connected:
                             #this sends it to the sync server, who will notify all connected clients about the progress
                             self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/set_progress",self.Payload))
-
-
-
-
                         """
                             else need to update the connected clients to this server about the status update.
                             No need for polling (ajax style). The server will push the data to the clients
-
-
-
                         """
-
                         #write out data each time a file has been processed
 
                     if self.dict_Jobs[self.ID].progress >= 100.0:
                         self.dict_Jobs[self.ID].progress = 100.0
                         self.dict_Jobs[self.ID].active = False
+                        self.m_UploadCompleteTasks(self.Tasks)
                         #self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
 
                         while not self.result_queue.empty():
@@ -330,7 +320,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                 if self.dict_Jobs[self.ID].progress >= 100.0:
                     self.dict_Jobs[self.ID].active = False
                     self.dict_Jobs[self.ID].progress = 100.0
-
+                    self.m_UploadCompleteTasks(self.Tasks)
                     while not self.result_queue.empty():
                         self.result_queue.get()
 
@@ -355,3 +345,52 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
             else:
                 logging.debug("No files in task")
         return
+class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
+    def __init__(self,Tasks, Upload_manager_name):
+        threading.Thread.__init__(self)
+        self.Tasks = Tasks
+        self.upload_queue = Tasks.upload_queue
+        self.dict_Jobs = Tasks.Jobs
+        self.dict_Data = Tasks.WorkData
+        self.Upload_manager_name = Upload_manager_name
+        self.name = self.Upload_manager_name
+        self.worker_queue = queue.Queue()
+        self.large_worker_queue = queue.Queue()
+        self.result_queue = queue.Queue()
+        self.Threads = {}
+
+    def run(self):
+        logging.debug("Upload manager started:")
+        while True:
+            self.next_task = self.upload_queue.get()
+            if self.next_task == None:
+                break
+
+            if self.next_task.ParentTask.type == "global":
+                ##wait until the global task has finished uploading until going onto the next task
+                while not self.next_task.FileTask.uploaded:
+                    continue
+
+            else:
+                ###upload here
+                for i in range(0, 10):
+                    time.sleep(0.5)
+                    logging.debug("uploading %s:%s", self.next_task.file, (i/10.0)*100.0)
+
+                self.next_task.FileTask.uploaded = True
+
+                self.WriteJob(self.Tasks, self.next_task.ParentTask.TaskID)
+                ###once done, then announce this to the other webimporter servers
+                self.data = {}
+                self.data["ID"] = self.next_task.ParentTask.TaskID
+                self.data["file"] = self.next_task.file
+                self.data["uploaded"] = True
+                self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/uploaded", self.data))
+                ###announce this to the syncserver which will broadcast this to other clients logged on to the syncserver
+
+
+
+
+
+
+

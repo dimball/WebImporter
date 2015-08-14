@@ -13,6 +13,20 @@ except ImportError:
 
 import urllib
 class c_HelperFunctions():
+    def m_UploadCompleteTasks(self, Tasks):
+        while not Tasks.upload_queue.empty():
+            Tasks.upload_queue.get()
+
+        for ID in Tasks.Order:
+            if not Tasks.Jobs[ID].metadata and Tasks.Jobs[ID].progress == 100.0:
+                for file in Tasks.Jobs[ID].filelist:
+                    if not Tasks.Jobs[ID].filelist[file].uploaded:
+                        self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file])
+                        Tasks.upload_queue.put(self.uploadtask)
+
+
+
+
     def StringToBool(self,input):
         if input == "True":
             return True

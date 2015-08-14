@@ -99,7 +99,7 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         self.m_StoreClient(origin, Tasks, "command")
         return True
     def open(self):
-        logging.debug('new command connection from %s', self)
+        logging.debug('new command connection from %s', Tasks.GetClientNameFromHandler(self))
         Tasks.CommandClients.append(self)
         #self.write_message(self.m_create_data("/webimporter/v1/connection/connected", 1))
     def on_message(self, message):
@@ -128,14 +128,14 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             self.m_NotifyClients("/webimporter/v1/global/queue/put",self.m_SerialiseTaskList(self.IncomingTasks, Tasks), Tasks.CommandClients, Tasks)
         elif self.Command == "/syncserver/v1/global/queue/task/put_no_reply":
             logging.debug("number of global tasks:%s", len(Tasks.Jobs))
-            logging.debug("Adding %s tasks to the global list from: %s", len(Tasks.Jobs), Tasks.GetClientNameFromHandler(self))
+            logging.debug("Adding %s tasks to the global list from: %s", len(self.Payload["TaskList"]), Tasks.GetClientNameFromHandler(self))
             self.m_deSerializeTaskList(self.Payload, Tasks, self)
 
         elif self.Command == "/syncserver/v1/global/queue/task/get_IDs":
             self.output = []
             for ID in Tasks.Jobs:
                 self.output.append(ID)
-            logging.debug(json.dumps(self.output))
+            #logging.debug(json.dumps(self.output))
             self.write_message(self.m_create_data("/syncserver/v1/global/register", self.output))
             #self.write_message(json.dumps(self.output).encode("utf-8"))
 
@@ -175,13 +175,16 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             ############################ REGISTER ############################
             self.m_reply(self.m_SerialiseSyncTasks(Tasks, False), self)
 
+        elif self.Command == "/syncserver/v1/global/upload/queue/task/file/uploaded":
+            ############################ Set uploaded flag ############################
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.StringToBool(self.Payload["uploaded"])
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/uploadstate/set", self.Payload, Tasks.CommandClients, Tasks)
+        elif self.Command == "/syncserver/v1/global/queue/task/metadata/set":
+            ############################ Set metadata ############################
+            Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
 
 
-        # elif self.Command == "/syncserver/v1/server/isconnected":
-        #     ############################ IS CONNECTED ############################
-        #     self.Output = {}
-        #     self.Output["status"] = "OK"
-        #     #self.request.sendall(bytes(json.dumps(self.Output),'utf-8'))
         elif self.Command == "/syncserver/v1/server/shutdown":
             ############################ SHUTDOWN ############################
             logging.debug("Shutting down server")

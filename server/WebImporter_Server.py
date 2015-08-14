@@ -94,6 +94,22 @@ class c_ServerCommands(hfn.c_HelperFunctions):
                 Tasks.LineManagers.remove(p)
         else:
             logging.debug("Line managers already stopped")
+
+    def m_activate_uploadqueue(self):
+        self.UploadManager = workers.c_UploadManager(Tasks, "Upload_Manager")
+        self.UploadManager.start()
+        Tasks.UploadManagers.append(self.UploadManager)
+    def m_deactivate_uploadqueue(self):
+
+        if len(Tasks.UploadManagers) > 0:
+            while not Tasks.upload_queue.empty():
+                Tasks.upload_queue.get()
+            for p in Tasks.UploadManagers:
+                Tasks.upload_queue.put(None)
+            for p in Tasks.UploadManagers:
+                p.join()
+                Tasks.UploadManagers.remove(p)
+
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
             if Tasks.Jobs[ID].state == "ready":
@@ -237,8 +253,6 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             logging.debug("Received tasks from syncserver:%s", len(self.Payload["TaskList"]))
             self.m_deSerializeTaskList(self.Payload, Tasks)
 
-
-
         # elif self.Command == "get_active_tasks":
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
@@ -272,9 +286,11 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
         elif self.Command == "/webimporter/v1/queue/activate":
             ############################ ACTIVATE QUEUE MANAGERS ############################
             self.m_activate_queue()
+            self.m_activate_uploadqueue()
         elif self.Command == "/webimporter/v1/queue/deactivate":
             ############################ DEACTIVATE QUEUE MANAGERS ############################
             self.m_deactivate_queue()
+            self.m_deactivate_uploadqueue()
         elif self.Command == "/webimporter/v1/queue/put_tasks":
             ############################ PUT LOCAL TASKS ON LOCAL QUEUE ############################
             self.m_put_tasks_on_queue()
@@ -286,6 +302,15 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             for ID in Tasks.Order:
                 self.aJobs.append(Tasks.Jobs[ID])
             self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients, Tasks)
+        elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
+            logging.debug("Setting metadata")
+            Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+            self.m_UploadCompleteTasks(Tasks)
+            if Tasks.syncserver_client.connected:
+                Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/metadata/set', self.Payload), Tasks)
+
+        elif self.Command == "/webimporter/v1/local/queue/task/metadata/get":
+            logging.debug("Getting metadata")
 
         elif self.Command == "/webimporter/v1/server/shutdown":
             ############################ SHUTDOWN SERVER ############################
@@ -317,11 +342,20 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
             ############################ SET LOCAL PRIORITY ON TASKS ############################
             self.m_setpriority(self.Payload)
-        elif self.Command == "/syncserver/v1/global/register":
+        elif self.Command == "/webimporter/v1/local/queue/task/file/uploadstate/set":
+            ############################ SET LOCAL UPLOAD STATE ON FILE LEVEL ############################
+            logging.debug("Setting upload state for:%s:%s", self.Payload["ID"], self.Payload["file"])
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.StringToBool(self.Payload["uploaded"])
+            self.m_NotifyClients("/client/v1/local/queue/task/file/uploadstate/set",self.Payload, Tasks.CommandClients, Tasks)
 
-            #Tasks.SimpleClient = cl.simple_connection(Tasks, "command")
-            #self.response = Tasks.SimpleClient.m_request(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
-#            logging.debug("reply:%s", self.response)
+        elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
+            ############################ SET LOCAL METADATA ############################
+            logging.debug("Setting metadata for:%s:%s", self.Payload["ID"])
+            Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+            self.m_UploadCompleteTasks(Tasks)
+            self.m_NotifyClients("/client/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
+
+        elif self.Command == "/syncserver/v1/global/register":
             self.dictID = {}
             self.GetTask = []
             self.SendTask = []
@@ -376,6 +410,8 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
         if self.Command == "/webimporter/v1/global/queue/task/set_progress":
             logging.debug("Received TASK progress from syncserver:%s:%s", self.Payload["ID"], self.Payload["progress"])
             Tasks.Jobs[self.Payload["ID"]].progress = self.Payload["progress"]
+            if self.Payload["progress"] == 100.0:
+                self.m_UploadCompleteTasks(Tasks)
 
 
         elif self.Command == "/webimporter/v1/global/queue/task/file/set_progress":
@@ -505,6 +541,7 @@ class TornadoServer(hfn.c_HelperFunctions):
             Tasks.syncserver_client.connection.send(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
             while not Tasks.ready:
                 continue
+
 
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
         logging.debug("starting mainloop")
