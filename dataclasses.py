@@ -1,11 +1,12 @@
 import queue
 class c_uploadTask():
-    def __init__(self, file, ParentTask, FileTask):
+    def __init__(self, file, ParentTask, FileTask, priority):
         self.ParentTask = ParentTask
         self.FileTask = FileTask
         self.file = file
         self.state = "queued"
         self.progress = 0.0
+        self.priority = priority
 
 class c_file():
     def __init__(self, size):

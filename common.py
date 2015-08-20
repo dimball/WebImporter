@@ -17,12 +17,24 @@ class c_HelperFunctions():
         while not Tasks.upload_queue.empty():
             Tasks.upload_queue.get()
 
+        self.OrderCounter = 0
         for ID in Tasks.Order:
             if not Tasks.Jobs[ID].metadata and Tasks.Jobs[ID].progress == 100.0:
                 for file in Tasks.Jobs[ID].filelist:
                     if not Tasks.Jobs[ID].filelist[file].uploaded:
-                        self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file])
+                        self.priority = "medium"
+                        if self.OrderCounter == 0:
+                            self.priority = "high"
+                        elif self.OrderCounter == 1:
+                            self.priority = "medium"
+                        elif self.OrderCounter > 1:
+                            self.priority = "low"
+
+
+                        self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file], self.priority)
                         Tasks.upload_queue.put(self.uploadtask)
+
+                self.OrderCounter += 1
 
 
 
