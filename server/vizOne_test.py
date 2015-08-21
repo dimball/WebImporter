@@ -113,6 +113,7 @@ class viz_one_test(hfn.c_HelperFunctions):
                 self.NewPath += self.aPathTokens[i] + "/"
 
             self.ftpLink = ['ftp://ardome:aidem630@10.211.110.145/' + self.NewPath + self.FileHead + self.Extension]
+            print(self.ftpLink)
             self.ftpLink = UriList(self.ftpLink)
 
             #Incoming media

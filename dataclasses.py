@@ -8,6 +8,7 @@ class c_uploadTask():
         self.progress = 0.0
         self.priority = priority
 
+
 class c_file():
     def __init__(self, size):
         self.progress = 0
@@ -15,6 +16,9 @@ class c_file():
         self.delete = False
         self.uploaded = False
         self.size = size
+        self.transferlink = None
+        self.assetlink = None
+
 
 
 class c_Task():
@@ -87,8 +91,14 @@ class c_ServerData(c_basedata):
         c_basedata.__init__(self)
         self.task_queue = queue.Queue()
         self.upload_queue = queue.Queue()
+        self.upload_worker_queue = queue.Queue()
         self.LineManagers = []
         self.UploadManagers = []
         self.syncserver_client = None
         self.syncserver_progress_client = None
         self.ready = True
+
+        self.TM = None
+        self.VizOneClient = None
+        self.RequestLinks = []
+        self.RequestList = {}

@@ -112,25 +112,35 @@ class c_ServerCommands(hfn.c_HelperFunctions):
 
     def m_start_task(self,ID):
         if ID in Tasks.Jobs:
-            if Tasks.Jobs[ID].state == "ready":
-                if Tasks.Jobs[ID].active == False:
-                    if Tasks.Jobs[ID].type == "local":
-                        if Tasks.Jobs[ID].IsComplete() == False:
-                            Tasks.Jobs[ID].active = True
-                            #Tasks.Jobs[ID].workerlist = {}
-                            Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                            logging.debug("Activating task:%s", ID)
-                else:
-                    self.Output["status"] = "Task already started"
-#                    Tasks.syncserver_client.m_reply(self.Output,self.request)
-            else:
-                self.Output["status"] = "Task is busy. Try again when it is ready"
- #               logging.debug("jejejsdfsdfsdfe")
- #               Tasks.syncserver_client.m_reply(self.Output,self.request)
+            while Tasks.Jobs[ID].state != "ready":
+                continue
 
-        else:
+            # if Tasks.Jobs[ID].state == "ready":
+            if Tasks.Jobs[ID].active == False:
+                if Tasks.Jobs[ID].type == "local":
+                    if Tasks.Jobs[ID].IsComplete() == False:
+                        Tasks.Jobs[ID].active = True
+                        #Tasks.Jobs[ID].workerlist = {}
+                        Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
+                        logging.debug("Activating task:%s", ID)
+                        #send new state to the sync server
+                        if Tasks.syncserver_client.connected:
+                            self.data = {}
+                            self.data["ID"] = ID
+                            self.data["active"] = True
+                            Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/active', self.data))
+
+            else:
+                self.Output["status"] = "Task already started"
+#                    Tasks.syncserver_client.m_reply(self.Output,self.request)
+#             else:
+#                 self.Output["status"] = "Task is busy. Try again when it is ready"
+#                 logging.debug("Task is busy, try it again")
+#  #               Tasks.syncserver_client.m_reply(self.Output,self.request)
+
+        # else:
          #   logging.debug("jejeje")
-            self.Output["status"] = "Task does not exist"
+            #self.Output["status"] = "Task does not exist"
           #  Tasks.syncserver_client.m_reply(self.Output,self.request)
     def m_get_tasks(self):
         self.aJobs = []
@@ -317,6 +327,7 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             logging.debug("Shutting down server")
             #go to each line manager and ask it to shut down
             self.m_deactivate_queue()
+            self.m_deactivate_uploadqueue()
             Tasks.MainLoop.stop()
         #print('Command data: %s', json.loads(data))
 
@@ -354,7 +365,8 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
             self.m_UploadCompleteTasks(Tasks)
             self.m_NotifyClients("/client/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
-
+        elif self.Command == "/webimporter/v1/local/queue/task/active":
+            Tasks.Jobs[self.Payload["ID"]].active = self.Payload["active"]
         elif self.Command == "/syncserver/v1/global/register":
             self.dictID = {}
             self.GetTask = []
@@ -410,8 +422,8 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
         if self.Command == "/webimporter/v1/global/queue/task/set_progress":
             logging.debug("Received TASK progress from syncserver:%s:%s", self.Payload["ID"], self.Payload["progress"])
             Tasks.Jobs[self.Payload["ID"]].progress = self.Payload["progress"]
-            if self.Payload["progress"] == 100.0:
-                self.m_UploadCompleteTasks(Tasks)
+            # if self.Payload["progress"] == 100.0:
+            #     self.m_UploadCompleteTasks(Tasks)
 
 
         elif self.Command == "/webimporter/v1/global/queue/task/file/set_progress":
@@ -425,7 +437,7 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
             time.sleep(0.5)
 
 
-class TornadoServer(hfn.c_HelperFunctions):
+class TornadoServer(c_ServerCommands):
      def on_message(self, ws, message):
         logging.debug("Message to the client was: %s", message)
 
@@ -449,6 +461,16 @@ class TornadoServer(hfn.c_HelperFunctions):
         self.dict_WorkData["large_file_threshold"] = int(self.config.find("largefilethreshold").text)
         self.dict_WorkData["syncserver_ip"] = self.config.find("syncserver_ip").text
         self.dict_WorkData["syncserver_port"] = self.config.find("syncserver_port").text
+        self.VizOne = self.config.find("vizone")
+        self.dict_WorkData["vizone_user"] = self.VizOne.find("user").text
+        self.dict_WorkData["vizone_pass"] = self.VizOne.find("pass").text
+        self.dict_WorkData["vizone_address"] = self.VizOne.find("address").text
+        self.vizOneFtp = self.VizOne.find("ftp")
+        self.dict_WorkData["ftp_user"] = self.vizOneFtp.find("user")
+        self.dict_WorkData["ftp_pass"] = self.vizOneFtp.find("pass")
+
+
+
         return self.dict_WorkData
      def m_ReadJobList(self, bReport=True):
         logging.debug("Init local TCP server: Reading existing local jobs from %s", Tasks.WorkData["sTargetDir"])
@@ -478,6 +500,9 @@ class TornadoServer(hfn.c_HelperFunctions):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].transferlink = self.m_ReadString(file.attrib["transferlink"])
+                Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].assetlink = self.m_ReadString(file.attrib["assetlink"])
+
             if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
                 Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
             else:
@@ -542,7 +567,7 @@ class TornadoServer(hfn.c_HelperFunctions):
             while not Tasks.ready:
                 continue
 
-
+        self.m_activate_uploadqueue()
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
         logging.debug("starting mainloop")
         Tasks.MainLoop.start()

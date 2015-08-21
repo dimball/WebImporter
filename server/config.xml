@@ -8,6 +8,15 @@
     <syncserver_port>8908</syncserver_port>
 
     <largefilethreshold>5</largefilethreshold>
-    <path>d:/destination/</path>
+    <path>d:/ftp/upload/</path>
     <numtcpport>5</numtcpport>
+    <vizone>
+        <address>192.168.110.144</address>
+        <user>admin</user>
+        <pass>admin</pass>
+        <ftp>
+            <user>ardome</user>
+            <pass>aidem630</pass>
+        </ftp>
+    </vizone>
 </Config>

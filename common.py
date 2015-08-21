@@ -44,6 +44,13 @@ class c_HelperFunctions():
             return True
         else:
             return False
+
+    def m_ReadString(self, input):
+        if input == "None":
+            return None
+        else:
+            return input
+
     def m_show_tasks(self, Tasks):
         for ID in Tasks.Order:
             logging.debug("[%s] ID:%s Files:%s Progress:%s", Tasks.Jobs[ID].type, ID, len(Tasks.Jobs[ID].filelist), Tasks.Jobs[ID].progress )
@@ -107,6 +114,8 @@ class c_HelperFunctions():
                 self.TaskData["Data"]["progress"] = Task.GetCurrentProgress()
             else:
                 self.TaskData["Data"]["progress"] = Task.progress
+
+            self.TaskData["Data"]["active"] = Task.active
             self.TaskData["Data"]["type"] = "global"
             self.TaskData["Data"]["metadata"] = Task.metadata
             self.TaskData["Data"]["filelist"] = {}
@@ -131,6 +140,7 @@ class c_HelperFunctions():
                 Tasks.Jobs[Task["ID"]] = dataclasses.c_Task(Task["ID"])
                 Tasks.Jobs[Task["ID"]].type = Task["Data"]["type"]
 
+            Tasks.Jobs[Task["ID"]].active = self.StringToBool(Task["Data"]["active"])
             Tasks.Jobs[Task["ID"]].progress = Task["Data"]["progress"]
             Tasks.Jobs[Task["ID"]].metadata = Task["Data"]["metadata"]
             Tasks.Jobs[Task["ID"]].filelistOrder = Task["Data"]["filelistOrder"]
@@ -226,11 +236,16 @@ class c_HelperFunctions():
             fileItem.set("delete",str(data.delete))
             fileItem.set("uploaded",str(data.uploaded))
             fileItem.set("size",str(data.size))
+            fileItem.set("transferlink",str(data.transferlink))
+            fileItem.set("assetlink",str(data.assetlink))
         self.indent(Task)
         Tree = ET.ElementTree(Task)
         self.dstfile = Tasks.WorkData["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"
         if not os.path.exists(os.path.dirname(self.dstfile)):
-            os.makedirs(os.path.dirname(self.dstfile))
+            try:
+                os.makedirs(os.path.dirname(self.dstfile))
+            except:
+                logging.debug("path already exists")
         Tree.write(self.dstfile, xml_declaration=True, encoding='utf-8', method="xml")
     def get_xmljobs(self,Tasks):
         self.xmljobs = []

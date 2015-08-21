@@ -183,7 +183,9 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             ############################ Set metadata ############################
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
             self.m_NotifyClients("/webimporter/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
-
+        elif self.Command == "/syncserver/v1/global/queue/task/active":
+            Tasks.Jobs[self.Payload["ID"]].active = self.Payload["active"]
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/active", self.Payload, Tasks.CommandClients, Tasks)
 
         elif self.Command == "/syncserver/v1/server/shutdown":
             ############################ SHUTDOWN ############################
