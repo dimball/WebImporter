@@ -31,14 +31,17 @@ class c_ServerCommands(hfn.c_HelperFunctions):
                 self.WriteJob(Tasks,ID)
             self.counter += 1
         self.counter = 0
+        logging.debug("New Priority list")
         for ID in Tasks.Order:
             logging.debug("[%s] Order:%s | ID:%s",Tasks.Jobs[ID].type, self.counter, ID)
             self.counter += 1
-
         #only do this if the queue is active
 
+        #queue is automatically cleared before new tasks are put on the queue.
         if len(Tasks.LineManagers)>0:
             self.m_put_tasks_on_queue()
+
+
 
 
         #notify clients
@@ -96,9 +99,13 @@ class c_ServerCommands(hfn.c_HelperFunctions):
             logging.debug("Line managers already stopped")
 
     def m_activate_uploadqueue(self):
-        self.UploadManager = workers.c_UploadManager(Tasks, "Upload_Manager")
-        self.UploadManager.start()
-        Tasks.UploadManagers.append(self.UploadManager)
+        if len(Tasks.UploadManagers)==0:
+            self.UploadManager = workers.c_UploadManager(Tasks, "Upload_Manager")
+            self.UploadManager.start()
+            Tasks.UploadManagers.append(self.UploadManager)
+        else:
+            logging.debug("Upload manager already started")
+
     def m_deactivate_uploadqueue(self):
 
         if len(Tasks.UploadManagers) > 0:
@@ -314,7 +321,10 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
             logging.debug("Setting metadata")
-            Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+            print(self.Payload["metadata"])
+            Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload['metadata']
+
+            logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
             self.m_UploadCompleteTasks(Tasks)
             if Tasks.syncserver_client.connected:
                 Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/metadata/set', self.Payload), Tasks)
@@ -352,21 +362,34 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             self.m_NotifyClients("/client/v1/local/queue/task/put",self.Payload, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
             ############################ SET LOCAL PRIORITY ON TASKS ############################
+            logging.debug("!!!!!!!!!!!Changing priority!!!!!!")
+            self.ChangeTranscodePriority(Tasks)
             self.m_setpriority(self.Payload)
-        elif self.Command == "/webimporter/v1/local/queue/task/file/uploadstate/set":
+
+
+        elif self.Command == "/webimporter/v1/local/queue/task/file/uploaded":
             ############################ SET LOCAL UPLOAD STATE ON FILE LEVEL ############################
             logging.debug("Setting upload state for:%s:%s", self.Payload["ID"], self.Payload["file"])
-            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.StringToBool(self.Payload["uploaded"])
-            self.m_NotifyClients("/client/v1/local/queue/task/file/uploadstate/set",self.Payload, Tasks.CommandClients, Tasks)
-
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.Payload["uploaded"]
+            self.m_NotifyClients("/client/v1/local/queue/task/file/uploaded", self.Payload, Tasks.CommandClients, Tasks)
+        elif self.Command == "/webimporter/v1/local/queue/task/file/transcoded":
+            ############################ SET LOCAL TRANSCODE STATE ON FILE LEVEL ############################
+            logging.debug("Setting transcoded state for:%s:%s", self.Payload["ID"], self.Payload["file"])
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transcoded = self.Payload["transcoded"]
+            self.m_NotifyClients("/client/v1/local/queue/task/file/transcoded", self.Payload, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
             ############################ SET LOCAL METADATA ############################
-            logging.debug("Setting metadata for:%s:%s", self.Payload["ID"])
+            logging.debug("Setting metadata for:%s:%s", self.Payload["ID"], self.Payload["metadata"])
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+            logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
             self.m_UploadCompleteTasks(Tasks)
             self.m_NotifyClients("/client/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/active":
             Tasks.Jobs[self.Payload["ID"]].active = self.Payload["active"]
+        elif self.Command == "/webimporter/v1/local/queue/task/file/atomlink/update":
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transferlink = self.Payload["transferlink"]
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].assetlink = self.Payload["assetlink"]
+
         elif self.Command == "/syncserver/v1/global/register":
             self.dictID = {}
             self.GetTask = []
@@ -466,8 +489,8 @@ class TornadoServer(c_ServerCommands):
         self.dict_WorkData["vizone_pass"] = self.VizOne.find("pass").text
         self.dict_WorkData["vizone_address"] = self.VizOne.find("address").text
         self.vizOneFtp = self.VizOne.find("ftp")
-        self.dict_WorkData["ftp_user"] = self.vizOneFtp.find("user")
-        self.dict_WorkData["ftp_pass"] = self.vizOneFtp.find("pass")
+        self.dict_WorkData["ftp_user"] = self.vizOneFtp.find("user").text
+        self.dict_WorkData["ftp_pass"] = self.vizOneFtp.find("pass").text
 
 
 
@@ -567,7 +590,6 @@ class TornadoServer(c_ServerCommands):
             while not Tasks.ready:
                 continue
 
-        self.m_activate_uploadqueue()
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
         logging.debug("starting mainloop")
         Tasks.MainLoop.start()

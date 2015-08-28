@@ -2,12 +2,13 @@ import threading
 import dataclasses
 import uuid
 import common as hfn
+import os
+import shutil
 import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
-import os
-import shutil
+
 
 class c_createTask(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self, Payload, Tasks):
@@ -58,7 +59,6 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
 
 
         self.WriteJob(self.Tasks,self.ID)
-
 class c_remove_completed_tasks(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self, Payload, Tasks):
         threading.Thread.__init__(self)
@@ -103,7 +103,6 @@ class c_remove_incomplete_tasks(threading.Thread, hfn.c_HelperFunctions):
                     logging.debug("%s is not a folder",self.fullpath)
             else:
                 logging.debug("Job is still active:" + ID)
-
 class c_restart_task(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self, Payload, Tasks):
         threading.Thread.__init__(self)
@@ -139,7 +138,6 @@ class c_restart_task(threading.Thread, hfn.c_HelperFunctions):
         else:
             self.Output["status"] = "Task does not exist"
             # Tasks.syncserver_client.m_reply(self.Output,self.request)
-
 class c_modify_task(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self, ID, Payload, Tasks):
         threading.Thread.__init__(self)

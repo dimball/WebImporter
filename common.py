@@ -12,33 +12,57 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 import urllib
+from vizone.payload.transfer import TransferRequest
 class c_HelperFunctions():
+    def m_GetMetaData(self, aMetadataList, key):
+        for item in aMetadataList:
+            if key in item:
+                return item[key]
+
     def m_UploadCompleteTasks(self, Tasks):
+        logging.debug("Putting uploading tasks on to queue")
         while not Tasks.upload_queue.empty():
             Tasks.upload_queue.get()
-
         self.OrderCounter = 0
         for ID in Tasks.Order:
-            if not Tasks.Jobs[ID].metadata and Tasks.Jobs[ID].progress == 100.0:
-                for file in Tasks.Jobs[ID].filelist:
-                    if not Tasks.Jobs[ID].filelist[file].uploaded:
-                        self.priority = "medium"
-                        if self.OrderCounter == 0:
-                            self.priority = "high"
-                        elif self.OrderCounter == 1:
+            if Tasks.Jobs[ID].type == "local":
+
+                if len(Tasks.Jobs[ID].metadata)>0 and Tasks.Jobs[ID].progress == 100.0:
+                    for file in Tasks.Jobs[ID].filelist:
+                        if not Tasks.Jobs[ID].filelist[file].uploaded and not Tasks.Jobs[ID].filelist[file].transcoded:
                             self.priority = "medium"
-                        elif self.OrderCounter > 1:
-                            self.priority = "low"
+                            if self.OrderCounter == 0:
+                                self.priority = "high"
+                            elif self.OrderCounter == 1:
+                                self.priority = "medium"
+                            elif self.OrderCounter > 1:
+                                self.priority = "low"
 
+                            self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file], self.priority)
+                            Tasks.upload_queue.put(self.uploadtask)
+                    self.OrderCounter += 1
+    def ChangeTranscodePriority(self, Tasks):
+        self.OrderCounter = 0
+        #logging.debug("Attempting to change transcode priority order")
+        for ID in Tasks.Order:
+            self.priority = "medium"
+            if self.OrderCounter == 0:
+                self.priority = "high"
+            elif self.OrderCounter == 1:
+                self.priority = "medium"
+            elif self.OrderCounter > 1:
+                self.priority = "low"
 
-                        self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file], self.priority)
-                        Tasks.upload_queue.put(self.uploadtask)
+            for file in Tasks.Jobs[ID].filelist:
+                if Tasks.Jobs[ID].filelist[file].uploaded and not Tasks.Jobs[ID].filelist[file].transcoded:
+                    #logging.debug("Setting priority")
+                    if Tasks.Jobs[ID].filelist[file].transferlink != None:
+                       # logging.debug("Has transfer link:%s", Tasks.Jobs[ID].filelist[file].transferlink)
+                        self.TransRequest = TransferRequest(priority=self.priority)
+                        logging.debug("Sending new priority to viz one:%s", Tasks.Jobs[ID].filelist[file].transferlink)
+                        Tasks.VizOneClient.PUT(Tasks.Jobs[ID].filelist[file].transferlink, self.TransRequest, check_status=False)
 
-                self.OrderCounter += 1
-
-
-
-
+            self.OrderCounter += 1
     def StringToBool(self,input):
         if input == "True":
             return True
@@ -220,7 +244,8 @@ class c_HelperFunctions():
       else:
         if level and (not elem.tail or not elem.tail.strip()):
           elem.tail = i
-    def WriteJob(self,Tasks, ID):
+    def WriteJob(self, Tasks, ID):
+        logging.debug("Writing data")
         TaskObject = Tasks.Jobs[ID]
         Task = ET.Element("Task")
         Task.set("ID",str(ID))
@@ -232,12 +257,14 @@ class c_HelperFunctions():
             data = TaskObject.filelist[file]
             fileItem = ET.SubElement(FileList,"File")
             fileItem.set("file",file)
-            fileItem.set("copied",str(data.copied))
-            fileItem.set("delete",str(data.delete))
-            fileItem.set("uploaded",str(data.uploaded))
-            fileItem.set("size",str(data.size))
-            fileItem.set("transferlink",str(data.transferlink))
-            fileItem.set("assetlink",str(data.assetlink))
+            fileItem.set("copied", str(data.copied))
+            fileItem.set("delete", str(data.delete))
+            fileItem.set("uploaded",  str(data.uploaded))
+            fileItem.set("size", str(data.size))
+            fileItem.set("transferlink", str(data.transferlink))
+            fileItem.set("assetlink", str(data.assetlink))
+            print(data.transcoded)
+            fileItem.set("transcoded", str(data.transcoded))
         self.indent(Task)
         Tree = ET.ElementTree(Task)
         self.dstfile = Tasks.WorkData["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"

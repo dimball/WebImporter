@@ -18,8 +18,8 @@ class c_file():
         self.size = size
         self.transferlink = None
         self.assetlink = None
-
-
+        self.transcoded = False
+        self.transcodeProgress = 0
 
 class c_Task():
     def __init__(self, ID):

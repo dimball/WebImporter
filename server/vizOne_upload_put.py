@@ -12,15 +12,13 @@ from vizone.payload.folder import Folder
 from vizone.resource.folder import create_folder
 from vizone.payload.media import Incoming
 from vizone.payload.transfer import TransferRequest
-
 import common as hfn
 import os
 import time
-
 from vizone.resource.incoming import get_incomings
 from vizone.payload.media.incomingcollection import IncomingCollection
 from vizone.net.message_queue import handle
-
+from vizone.client import HTTPClientError
 
 ##needs to override the incoming class as it is missing the atomid. Will be fixed in the next version of python One
 from vizone.payload.media.incoming import Incoming as _Incoming
@@ -30,7 +28,7 @@ class Incoming(_Incoming):
 
 class viz_one_test(hfn.c_HelperFunctions):
     def __init__(self):
-
+        self.ExitStomp = False
         self.client = init('192.168.110.144', 'admin', 'admin')
         self.TransferMonitors = []
         self.osd = search_seriess()
@@ -100,63 +98,57 @@ class viz_one_test(hfn.c_HelperFunctions):
             self.NewFile = os.path.normpath(filename)
             self.PathHead, self.FileTail = os.path.split(self.NewFile)
             self.FileHead, self.Extension = (os.path.splitext(self.FileTail))
-
+            #
             self.placeholder = Item(title=self.FileHead)
             ##get the placeholder asset entry
             self.placeholder.parse(self.client.POST(self.asset_entry_endpoint, self.placeholder))
             print("Placeholder atomid:", self.placeholder.atomid)
             self.aItemAsset.append(self.placeholder.atomid)
-
+            #
             self.drive, self.Path = os.path.splitdrive(self.PathHead)
-
+            #
             self.aPathTokens = self.Path.split("\\")
             self.NewPath = ""
             for i in range(2, len(self.aPathTokens)):
                 self.NewPath += self.aPathTokens[i] + "/"
 
-            self.ftpLink = ['ftp://ardome:aidem630@10.211.110.145/' + self.NewPath + self.FileHead + self.Extension]
-            print(self.ftpLink)
-            self.ftpLink = UriList(self.ftpLink)
-
-            #Incoming media
-            #this uploads the file (or rather, viz one imports the file from your computer)
-            self.incoming = Incoming(self.client.POST(self.placeholder.import_unmanaged_link, self.ftpLink, check_status=False))
-
-
-
             #wait for the file to be imported before it start on the next file. This is ok for a single machine, but for
             #multiple then this will not work. It will need some sort of id mechanism as it checks all incoming media
             #tasks from the server and does no filtering.
+            self.TransferRequest = None
+            with open(self.NewFile, 'rb') as f:
+                self.data = {}
+                self.data['Content-Type'] = 'application/octet-stream'
+                self.data['Expect'] = ''
 
-            self.TransferRequestLink = None
-            while True:
-                #get all incoming media tasks
-                self.Collection = IncomingCollection(get_incomings())
-                self.bBreakOut = False
-                self.incomings = [Incoming(e) for e in self.Collection.entries]
-                for incoming in self.incomings:
-                    #if transferlink is NONE then
-                    if incoming.atomid == self.incoming.atomid:
-                        print("Import progress:", (self.NewPath + self.FileHead + self.Extension))
-                        if incoming.transfer_link != None:
-                            self.TransferRequestLink = incoming.transfer_link
-                            self.bBreakOut = True
+                #uploads the file
+                self.r = self.client.PUT(self.placeholder.edit_media_link, f, headers=self.data)
 
-                if self.bBreakOut == True:
-                    break
-                #wait until transfer request link is available
-                time.sleep(0.5)
+                #have to wait a little bit for the file to be finalised on the server
+                time.sleep(1)
 
+                #waits for the placeholder to be ready with the transfer request (transcoding request)
+                while True:
+                    self.placeholder = Item(self.client.GET(self.placeholder.self_link))
+                    try:
+                        self.r = self.client.GET(self.placeholder.upload_task_link)
+                        self.Incoming = Incoming(self.r)
+                        if self.Incoming.transfer_link != None:
+                            self.TransferRequest = TransferRequest(self.client.GET(self.Incoming.transfer_link))
+                            break
+                    except:
+                        time.sleep(1)
             #at this point the transfer request link is available. It should be possible to set the priority here now
 
-            self.TransRequest = TransferRequest(self.client.GET(self.TransferRequestLink))
-            self.TransRequest.priority = "low" ## can be "low", "medium", "high"
-            self.client.PUT(self.TransRequest.self_link, self.TransRequest, check_status=False)
+            self.TransferRequest.priority = "low" ## can be "low", "medium", "high"
+            self.client.PUT(self.TransferRequest.self_link, self.TransferRequest, check_status=False)
 
-            self.RequestLinks.append(self.TransRequest)
-            self.RequestList[self.TransRequest.atomid] = {}
-            self.RequestList[self.TransRequest.atomid]["path"] = self.NewPath + self.FileHead + self.Extension
-            self.RequestList[self.TransRequest.atomid]["asset"] = self.placeholder.atomid
+            self.RequestLinks.append(self.TransferRequest)
+            self.RequestList[self.TransferRequest.atomid] = {}
+            self.RequestList[self.TransferRequest.atomid]["path"] = self.NewPath + self.FileHead + self.Extension
+            self.RequestList[self.TransferRequest.atomid]["asset"] = self.placeholder.atomid
+
+
 
         self.TM = handle(self.RequestLinks[0].monitor_link.href, self.handler, 'admin', 'admin')
 
@@ -172,6 +164,7 @@ class viz_one_test(hfn.c_HelperFunctions):
 
         self.TM.close()
         #self.RequestLinks[0].monitor_link.href
+
 
     def handler(self, response):
         identity = response.headers.get('identity')

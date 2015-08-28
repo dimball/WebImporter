@@ -51,6 +51,17 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
                 self.SendData["progress"] = progress
                 self.SendData["file"] = file
                 self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
+    def m_setTranscodeProgress(self,ID, file, progress):
+        if ID in Tasks.Jobs:
+            if progress > Tasks.Jobs[ID].filelist[file].transcodeProgress:
+                #logging.debug("Setting progress for:%s:%s", ID, progress)
+                Tasks.Jobs[ID].filelist[file].transcodeProgress = progress
+                ### needs to only notify clients of the progress.
+                self.SendData = {}
+                self.SendData["ID"] = ID
+                self.SendData["progress"] = progress
+                self.SendData["file"] = file
+                self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
 
     def open(self):
         logging.debug('Syncserver new progress connection')
@@ -66,6 +77,10 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
         elif self.Command == "/syncserver/v1/global/queue/task/file/set_progress":
             logging.debug('Progress data: %s', self.Payload)
             self.m_setFileProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
+        elif self.Command == "/syncserver/v1/global/queue/task/file/transcode/set_progress":
+            logging.debug('Progress data: %s', self.Payload)
+            self.m_setTranscodeProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
+
     def on_close(self):
         logging.debug('Progress socket connection closed %s', Tasks.GetClientNameFromHandler(self))
         Tasks.ProgressClients.remove(self)
@@ -177,8 +192,13 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
 
         elif self.Command == "/syncserver/v1/global/upload/queue/task/file/uploaded":
             ############################ Set uploaded flag ############################
-            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.StringToBool(self.Payload["uploaded"])
-            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/uploadstate/set", self.Payload, Tasks.CommandClients, Tasks)
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.Payload["uploaded"]
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/uploaded", self.Payload, Tasks.CommandClients, Tasks)
+        elif self.Command == "/syncserver/v1/global/upload/queue/task/file/transcoded":
+            ############################ Set transcoded flag ############################
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transcoded = self.Payload["transcoded"]
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/transcoded", self.Payload, Tasks.CommandClients, Tasks)
+
         elif self.Command == "/syncserver/v1/global/queue/task/metadata/set":
             ############################ Set metadata ############################
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
@@ -186,6 +206,12 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         elif self.Command == "/syncserver/v1/global/queue/task/active":
             Tasks.Jobs[self.Payload["ID"]].active = self.Payload["active"]
             self.m_NotifyClients("/webimporter/v1/local/queue/task/active", self.Payload, Tasks.CommandClients, Tasks)
+        elif self.Command == "/syncserver/v1/global/upload/queue/task/file/atomlink/update":
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transferlink = self.Payload["transferlink"]
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].assetlink = self.Payload["assetlink"]
+
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/atomlink/update", self.Payload, Tasks.CommandClients, Tasks)
+
 
         elif self.Command == "/syncserver/v1/server/shutdown":
             ############################ SHUTDOWN ############################

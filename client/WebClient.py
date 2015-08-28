@@ -42,6 +42,7 @@ class client_progress_handler():
         elif self.Command == "/client/v1/local/queue/task/file/set_progress":
             logging.debug("Received FILE progress:%s:%s", self.Payload["file"], self.Payload["progress"])
 
+
 class client_command_handler():
     ###this recieves messages from the web importer server.
     def on_message(self, ws, data):
@@ -52,7 +53,8 @@ class client_command_handler():
             logging.debug("Received new TASK from webimporter:%s", self.Payload["TaskList"][0]["ID"])
         elif self.Command == "/client/v1/local/queue/task/get":
             logging.debug("Received Jobs from webimporter:%s", self.Payload["job"])
-
+        elif self.Command == "/client/v1/local/queue/set_priority":
+            logging.debug("Recived new priority order from web importer")
 
 
 class threaded_Websocket_Client(threading.Thread, hfn.c_HelperFunctions):
@@ -296,17 +298,48 @@ def deactivate_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/deactivate'))
 def put_tasks_on_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/put_tasks'))
+class c_metadata():
+    def __init__(self):
+        self.data = []
+
+    def m_add(self,key,value):
+        self.DataElement = {}
+        self.DataElement[key] = value
+        self.data.append(self.DataElement)
+    def m_get(self):
+        return self.data
+
+def Add_MetaData(Client, slot):
+
+    data = {}
+    dJobs = Response_Client(CreateData('/webimporter/v1/queue/task/get_all'))
+    if dJobs != None:
+        dJobs = json.loads(dJobs)
+        aJobs = dJobs["job"]
+        if len(aJobs)>0:
+            metadata = c_metadata()
+            metadata.m_add("series", "Mr Robot season 2")
+            metadata.m_add("episode", "Episode 2")
+            metadata.m_add("card", "card 2")
+            metadata.m_add("date", "28/08/15")
+
+            data["ID"] = aJobs[slot]
+            data["metadata"] = metadata.m_get()
+
+    Client.m_send(CreateData("/webimporter/v1/local/queue/task/metadata/set", data))
 if __name__ == "__main__":
     threaded_Websocket_Client("localhost", 9090, "progress", client_progress_handler())
     CommandHandler = threaded_Websocket_Client("localhost", 9090, "command", client_command_handler())
     #setpriority([])
     # create_copytask()
-    # #create_copytask()
-    create_copytask(CommandHandler)
-    # time.sleep(4)
-    startqueue(CommandHandler)
-    put_tasks_on_queue(CommandHandler)
-    activate_queue(CommandHandler)
+    #create_copytask()
+
+    # create_copytask(CommandHandler)
+    # startqueue(CommandHandler)
+    # put_tasks_on_queue(CommandHandler)
+    # activate_queue(CommandHandler)
+    Add_MetaData(CommandHandler, 1)
+    # setpriority(CommandHandler, [])
     #deactivate_queue()
     # time.sleep(5)
     #pausequeue()
@@ -317,7 +350,7 @@ if __name__ == "__main__":
     # time.sleep(2)
    #CheckStatus()
 
-    #setpriority(CommandHandler, [])
+
     #deactivate_queue()
     #removeincompletetasks()
     #removecompleted()
