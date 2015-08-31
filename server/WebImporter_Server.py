@@ -20,6 +20,13 @@ import tornado.web
 import tornado.websocket
 import tornado.gen
 import time
+from common import c_metadata
+
+
+
+
+
+
 class c_ServerCommands(hfn.c_HelperFunctions):
     def m_setpriority(self,Payload):
         logging.debug("************Setting new priorities*************************")
@@ -321,10 +328,12 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
             logging.debug("Setting metadata")
-            print(self.Payload["metadata"])
+            #print(self.Payload["metadata"])
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload['metadata']
 
-            logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
+            #logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
+            #write the data
+            self.WriteJob(Tasks, self.Payload["ID"])
             self.m_UploadCompleteTasks(Tasks)
             if Tasks.syncserver_client.connected:
                 Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/metadata/set', self.Payload), Tasks)
@@ -491,6 +500,7 @@ class TornadoServer(c_ServerCommands):
         self.vizOneFtp = self.VizOne.find("ftp")
         self.dict_WorkData["ftp_user"] = self.vizOneFtp.find("user").text
         self.dict_WorkData["ftp_pass"] = self.vizOneFtp.find("pass").text
+        self.dict_WorkData["ftp_root"] = self.vizOneFtp.find("root").text
 
 
 
@@ -525,6 +535,9 @@ class TornadoServer(c_ServerCommands):
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].transferlink = self.m_ReadString(file.attrib["transferlink"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].assetlink = self.m_ReadString(file.attrib["assetlink"])
+            for metadata in self.root.find("MetaDataList").findall("metadata"):
+                self.metadata = c_metadata()
+                self.metadata.m_add(metadata.attrib["key"], metadata.attrib["value"])
 
             if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
                 Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
@@ -589,6 +602,7 @@ class TornadoServer(c_ServerCommands):
             Tasks.syncserver_client.connection.send(self.m_create_data('/syncserver/v1/global/queue/task/get_IDs'))
             while not Tasks.ready:
                 continue
+        self.ftpserver = workers.c_ftpServer(Tasks)
 
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
         logging.debug("starting mainloop")

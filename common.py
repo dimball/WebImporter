@@ -13,14 +13,26 @@ except ImportError:
 
 import urllib
 from vizone.payload.transfer import TransferRequest
+class c_metadata():
+    def __init__(self):
+        self.data = []
+
+    def m_add(self,key,value):
+        self.DataElement = {}
+        self.DataElement[key] = value
+        self.data.append(self.DataElement)
+    def m_get(self):
+        return self.data
+
 class c_HelperFunctions():
+
     def m_GetMetaData(self, aMetadataList, key):
         for item in aMetadataList:
             if key in item:
                 return item[key]
 
     def m_UploadCompleteTasks(self, Tasks):
-        logging.debug("Putting uploading tasks on to queue")
+
         while not Tasks.upload_queue.empty():
             Tasks.upload_queue.get()
         self.OrderCounter = 0
@@ -37,7 +49,7 @@ class c_HelperFunctions():
                                 self.priority = "medium"
                             elif self.OrderCounter > 1:
                                 self.priority = "low"
-
+                            logging.debug("Filtering tasks on to upload queue")
                             self.uploadtask = dataclasses.c_uploadTask(file, Tasks.Jobs[ID], Tasks.Jobs[ID].filelist[file], self.priority)
                             Tasks.upload_queue.put(self.uploadtask)
                     self.OrderCounter += 1
@@ -263,8 +275,14 @@ class c_HelperFunctions():
             fileItem.set("size", str(data.size))
             fileItem.set("transferlink", str(data.transferlink))
             fileItem.set("assetlink", str(data.assetlink))
-            print(data.transcoded)
             fileItem.set("transcoded", str(data.transcoded))
+
+        MetaDataList = ET.SubElement(Task, "MetaDataList")
+        for metadata in TaskObject.metadata:
+            MetadataItem = ET.SubElement(MetaDataList,"metadata")
+            for key, value in metadata.items():
+                MetadataItem.set("key", key)
+                MetadataItem.set("value", value)
         self.indent(Task)
         Tree = ET.ElementTree(Task)
         self.dstfile = Tasks.WorkData["sTargetDir"] + str(ID) + "/" + str(ID) + ".xml"

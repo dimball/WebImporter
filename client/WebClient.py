@@ -104,12 +104,16 @@ def CreateData(Command,Payload=0):
     data["command"] = Command
     data["payload"] = Payload
     return json.dumps(data)
-def create_copytask(Client):
+def create_copytask(Client, pathOverride=None):
     tree = ET.ElementTree(file="./client_config.xml")
     config = tree.getroot()
     JobList = []
-    for path in config.find("source").findall("path"):
-        JobList.append(path.text)
+    if not pathOverride:
+        for path in config.find("source").findall("path"):
+            JobList.append(path.text)
+    else:
+        JobList.append(pathOverride)
+
     aPayload = []
 
     for pl in JobList:
@@ -298,16 +302,6 @@ def deactivate_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/deactivate'))
 def put_tasks_on_queue(Client):
     Client.m_send(CreateData('/webimporter/v1/queue/put_tasks'))
-class c_metadata():
-    def __init__(self):
-        self.data = []
-
-    def m_add(self,key,value):
-        self.DataElement = {}
-        self.DataElement[key] = value
-        self.data.append(self.DataElement)
-    def m_get(self):
-        return self.data
 
 def Add_MetaData(Client, slot):
 
@@ -317,10 +311,10 @@ def Add_MetaData(Client, slot):
         dJobs = json.loads(dJobs)
         aJobs = dJobs["job"]
         if len(aJobs)>0:
-            metadata = c_metadata()
-            metadata.m_add("series", "Mr Robot season 2")
-            metadata.m_add("episode", "Episode 2")
-            metadata.m_add("card", "card 2")
+            metadata = hfn.c_metadata()
+            metadata.m_add("series", "Mr Robot season 1")
+            metadata.m_add("episode", "Episode 1")
+            metadata.m_add("card", "card 1")
             metadata.m_add("date", "28/08/15")
 
             data["ID"] = aJobs[slot]
@@ -331,16 +325,16 @@ if __name__ == "__main__":
     threaded_Websocket_Client("localhost", 9090, "progress", client_progress_handler())
     CommandHandler = threaded_Websocket_Client("localhost", 9090, "command", client_command_handler())
     #setpriority([])
-    # create_copytask()
-    #create_copytask()
-
-    # create_copytask(CommandHandler)
-    # startqueue(CommandHandler)
-    # put_tasks_on_queue(CommandHandler)
-    # activate_queue(CommandHandler)
-    Add_MetaData(CommandHandler, 1)
-    # setpriority(CommandHandler, [])
-    #deactivate_queue()
+    #create_copytask(CommandHandler, "c:/data7")
+    # create_copytask(CommandHandler, "c:/data4")
+    # # time.sleep(1) #has to or else the next part will just see the first task and not the second one.
+    startqueue(CommandHandler)
+    put_tasks_on_queue(CommandHandler)
+    activate_queue(CommandHandler)
+    # # Add_MetaData(CommandHandler, 0)
+    #Add_MetaData(CommandHandler, 0)
+    #setpriority(CommandHandler, [])
+    #deactivate_queue(CommandHandler)
     # time.sleep(5)
     #pausequeue()
     #
@@ -354,15 +348,8 @@ if __name__ == "__main__":
     #deactivate_queue()
     #removeincompletetasks()
     #removecompleted()
-#     time.sleep(0.1)
-#
-# #    removeincompletetasks()
-#     create_copytask()
+    #removeincompletetasks()
 
-
-    #create_copytask()
-    #create_copytask()
-    #create_copytask()
     #time.sleep(2)
     #modify(0)
     #restart_tasks()
@@ -372,12 +359,6 @@ if __name__ == "__main__":
     # # #start_task(0)
     # # #
     #pausequeue()
-    # pause(0)
-    # pause(1)
-    # pause(2)
-    # pause(3)
-    # pause(4)
-    # pause(5)
     #
     # #
     # time.sleep(3)

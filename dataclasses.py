@@ -7,7 +7,7 @@ class c_uploadTask():
         self.state = "queued"
         self.progress = 0.0
         self.priority = priority
-
+        self.FolderLink = None
 
 class c_file():
     def __init__(self, size):
@@ -102,3 +102,4 @@ class c_ServerData(c_basedata):
         self.VizOneClient = None
         self.RequestLinks = []
         self.RequestList = {}
+        self.FTPHandler = None

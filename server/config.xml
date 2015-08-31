@@ -14,9 +14,11 @@
         <address>192.168.110.144</address>
         <user>admin</user>
         <pass>admin</pass>
+
         <ftp>
             <user>ardome</user>
             <pass>aidem630</pass>
+            <root>d:/ftp</root>
         </ftp>
     </vizone>
 </Config>

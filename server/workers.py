@@ -24,6 +24,9 @@ from vizone.resource.program import create_program
 from vizone.payload.collection.members import Members
 from vizone.urilist import UriList
 from vizone.resource.series import search_seriess
+
+from vizone.resource.series import get_seriess
+
 from vizone.payload.series import SeriesFeed
 from vizone.payload.folder import Folder
 from vizone.resource.folder import create_folder
@@ -31,6 +34,7 @@ from vizone.payload.media import Incoming
 from vizone.payload.transfer import TransferRequest
 from vizone.resource.incoming import get_incomings
 from vizone.payload.media.incomingcollection import IncomingCollection
+from vizone.payload.series import SeriesFeed
 from vizone.net.message_queue import handle
 
 ##needs to override the incoming class as it is missing the atomid. Will be fixed in the next version of python One
@@ -38,6 +42,68 @@ from vizone.payload.media.incoming import Incoming as _Incoming
 from vizone.descriptors import Value
 class Incoming(_Incoming):
     atomid = Value('atom:id', str)
+
+from pyftpdlib.authorizers import DummyAuthorizer
+from pyftpdlib.handlers import FTPHandler
+from pyftpdlib.servers import FTPServer
+
+class c_WebImporterFTPHandler(FTPHandler):
+    def on_connect(self):
+        pass
+        # logging.debug("%s:%s connected", self.remote_ip, self.remote_port)
+
+    def on_disconnect(self):
+        # do something when client disconnects
+        pass
+
+    def on_login(self, username):
+        # do something when user login
+        pass
+
+    def on_logout(self, username):
+        # do something when user logs out
+        pass
+
+    def on_file_sent(self, file):
+        #this can be used to notify clients/server etc.
+        logging.debug("File: %s is sent", file)
+        # do something when a file has been sent
+        pass
+
+    def on_file_received(self, file):
+        # do something when a file has been received
+        pass
+
+    def on_incomplete_file_sent(self, file):
+        # do something when a file is partially sent
+        pass
+
+    def on_incomplete_file_received(self, file):
+        # remove partially uploaded files
+        import os
+        os.remove(file)
+
+
+
+class c_ftpServer(threading.Thread):
+    def __init__(self, Tasks):
+        threading.Thread.__init__(self)
+        self.Tasks = Tasks
+        self.start()
+
+    def run(self):
+        self.authorizer = DummyAuthorizer()
+        self.authorizer.add_user(self.Tasks.WorkData["ftp_user"], self.Tasks.WorkData["ftp_pass"], self.Tasks.WorkData["ftp_root"], perm="elradfmw")
+        self.authorizer.add_anonymous(self.Tasks.WorkData["ftp_root"])
+        self.Tasks.FTPHandler = c_WebImporterFTPHandler
+        self.Tasks.FTPHandler.authorizer = self.authorizer
+
+        self.server = FTPServer(("0.0.0.0", 21), self.Tasks.FTPHandler)
+
+        self.server.serve_forever()
+
+
+
 class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self,dict_Jobs, dict_Data, worker_name,worker_queue,result_queue, operand, Tasks):
         threading.Thread.__init__(self)
@@ -491,6 +557,7 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                 self.placeholder = Item(title=self.FileHead)
                 ##get the placeholder asset entry
                 self.placeholder.parse(self.Tasks.VizOneClient.POST(self.asset_entry_endpoint, self.placeholder))
+
                 logging.debug("Creating asset:%s", self.placeholder.atomid)
                 #print("Placeholder atomid:", self.placeholder.atomid)
                 self.aItemAsset.append(self.placeholder.atomid)
@@ -530,76 +597,13 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                 logging.debug("Notifying syncserver of new upload task:%s", self.next_task.file)
                 self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/uploaded", self.data))
                 ###announce this to the syncserver which will broadcast this to other clients logged on to the syncserver
-                time.sleep(1)
-                logging.debug("Searching for osd")
-                self.osd = search_seriess()
-                ##use the metadata to create the series name
-
-
-                self.searchUrl = self.osd.make_url({
-                    'searchTerms': self.m_GetMetaData(self.next_task.ParentTask.metadata, "series"),
-                    'count': 1,
-                    'vizsort:sort': '-search.creationDate',
-                })
-
-                self.result = SeriesFeed(self.Tasks.VizOneClient.GET(self.searchUrl))
-                self.series = None
-                if (len(self.result.entries) == 0):
-                    ##if series does not exist then create one
-                    self.series = Series(title=self.m_GetMetaData(self.next_task.ParentTask.metadata, "series"))
-                    self.series = create_series(self.series)
-                else:
-                    ##else just use the first one you find that matches it. Should not be duplicate series with the same name
-                    self.series = self.result.entries[0]
-
-
-                #figure out what programs is in the series. Means that we need the series first
-
-                ##use the metadata to create the episode name
-                self.SeriesPrograms = (Members(self.Tasks.VizOneClient.GET(self.series.down_link)))
-                self.program = None
-                for entry in self.SeriesPrograms.entries:
-                    if entry.title == self.m_GetMetaData(self.next_task.ParentTask.metadata, "episode"):
-                        self.program = entry.program
-                        ##if it is found, then it should already be under the right series
-                        break
-
-                if self.program == None:
-                    self.program = Program(title=self.m_GetMetaData(self.next_task.ParentTask.metadata, "episode"))
-                    self.program = create_program(self.program)
-                    ##put the program in the series
-                    self.Program_urilist = UriList([self.program.atomid])
-                    Members(self.Tasks.VizOneClient.POST(self.series.addmembers.add_last_link, self.Program_urilist))
-
-                ##add the asset item into the folder
-
-                self.FoldersInPrograms = (Members(self.Tasks.VizOneClient.GET(self.program.down_link)))
-                self.folder = None
-
-                ##use the metadata to create the folder name
-                for entry in self.FoldersInPrograms.entries:
-                    if entry.title == "Card1":
-                        self.folder = entry.folder
-                        ##if it is found, then it should already be under the right series
-                        break
-
-                if self.folder == None:
-                    self.folder = Folder(title=self.m_GetMetaData(self.next_task.ParentTask.metadata, "card"))
-                    self.folder = create_folder(self.folder)
-                    ##add the folder item into the program
-                    self.Folder_urilist = UriList([self.folder.atomid])
-                    Members(self.Tasks.VizOneClient.POST(self.program.addmembers.add_last_link, self.Folder_urilist))
-
-
-
-
-
-
                 #wait for the file to be imported before it start on the next file.
                 logging.debug("Upload Started for:%s", self.UploadFile)
 
                 self.TransRequest = None
                 if self.method == "ftp":
+
+
                     self.incoming = Incoming(self.Tasks.VizOneClient.POST(self.placeholder.import_unmanaged_link, self.UploadFile, check_status=False))
                     while True:
                         #get all incoming media tasks
@@ -665,7 +669,7 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
 
                 ## Add the files to the folder
                 self.ItemAsset_urilist = UriList(self.aItemAsset)
-                Members(self.Tasks.VizOneClient.POST(self.folder.addmembers.add_last_link, self.ItemAsset_urilist, check_status=False))
+                Members(self.Tasks.VizOneClient.POST(self.next_task.FolderLink.addmembers.add_last_link, self.ItemAsset_urilist, check_status=False))
                 self.next_task.FileTask.transferlink = self.TransRequest.self_link.href
                 self.next_task.FileTask.assetlink = self.placeholder.self_link.href
                 self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].transferlink = self.TransRequest.self_link.href
@@ -719,5 +723,66 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
     def run(self):
         while True:
             self.next_task = self.upload_queue.get()
-            logging.debug("putting task on worker queue:%s", self.next_task.file)
-            self.Tasks.upload_worker_queue.put(self.next_task)
+            if not self.next_task.ParentTask:
+                logging.debug("parent task is not present")
+                continue
+            else:
+                #metadata has been added here.
+                self.AllSeries = SeriesFeed(get_seriess())
+                self.series = self.m_GetMetaData(self.next_task.ParentTask.metadata, "series")
+                self.episode = self.m_GetMetaData(self.next_task.ParentTask.metadata, "episode")
+                self.card = self.m_GetMetaData(self.next_task.ParentTask.metadata, "card")
+
+
+                self.SeriesObject = None
+                for SeriesEntry in self.AllSeries.entries:
+                    if SeriesEntry.title == self.series:
+                        logging.debug("Using existing series:%s", self.series)
+                        self.SeriesObject = SeriesEntry
+                        break
+
+                if not self.SeriesObject:
+                    logging.debug("Creating series:%s", self.series)
+                    #create the series
+                    self.SeriesObject = Series(title=self.series)
+                    self.SeriesObject = create_series(self.SeriesObject)
+
+                self.AllEpisodes = (Members(self.Tasks.VizOneClient.GET(self.SeriesObject.down_link)))
+                self.EpisodeObject = None
+                for EpisodeEntry in self.AllEpisodes.entries:
+                    if EpisodeEntry.title == self.episode:
+                        logging.debug("Using existing episode:%s", self.episode)
+                        self.EpisodeObject = EpisodeEntry.program
+                        break
+
+                if not self.EpisodeObject:
+                    logging.debug("Creating episode:%s", self.episode)
+                    self.EpisodeObject = Program(title=self.episode)
+                    self.EpisodeObject = create_program(self.EpisodeObject)
+                    ##put the program in the series
+                    self.EpisodeObject_urilist = UriList([self.EpisodeObject.atomid])
+                    self.Tasks.VizOneClient.POST(self.SeriesObject.addmembers.add_last_link, self.EpisodeObject_urilist)
+
+                logging.debug("episodeObject:%s", self.EpisodeObject)
+                self.ALLFoldersInEpisodes = (Members(self.Tasks.VizOneClient.GET(self.EpisodeObject.down_link)))
+                self.FolderObject = None
+
+                ##use the metadata to create the folder name
+                for FolderEntry in self.ALLFoldersInEpisodes.entries:
+                    if FolderEntry.title == self.card:
+                        logging.debug("Using existing folder:%s", self.card)
+                        self.FolderObject = FolderEntry.folder
+                        ##if it is found, then it should already be under the right series
+                        break
+
+                if not self.FolderObject:
+                    logging.debug("Creating folder:%s", self.card)
+                    self.FolderObject = Folder(title=self.card)
+                    self.FolderObject = create_folder(self.FolderObject)
+                    ##add the folder item into the program
+                    self.FolderObject_urilist = UriList([self.FolderObject.atomid])
+                    Members(self.Tasks.VizOneClient.POST(self.EpisodeObject.addmembers.add_last_link, self.FolderObject_urilist))
+
+                self.next_task.FolderLink = self.FolderObject
+                logging.debug("putting task on worker queue:%s", self.next_task.file)
+                self.Tasks.upload_worker_queue.put(self.next_task)

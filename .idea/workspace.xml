@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="db94d1ed-9c29-4a67-8b78-a94e7e6ca188" name="New protocol" comment="implementing viz one upload process part 2">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/server/purgeVizOneFiles.py" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/server/vizOne_upload_put.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/syncserver/SyncServer.py" afterPath="$PROJECT_DIR$/syncserver/SyncServer.py" />
+    <list default="true" id="db94d1ed-9c29-4a67-8b78-a94e7e6ca188" name="New protocol" comment="implementing viz one and metadata upload process part 3">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/client/WebClient.py" afterPath="$PROJECT_DIR$/client/WebClient.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/WebImporter_Server.py" afterPath="$PROJECT_DIR$/server/WebImporter_Server.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/client/client_config.xml" afterPath="$PROJECT_DIR$/client/client_config.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/commands.py" afterPath="$PROJECT_DIR$/server/commands.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/common.py" afterPath="$PROJECT_DIR$/common.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/config.xml" afterPath="$PROJECT_DIR$/server/config.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/dataclasses.py" afterPath="$PROJECT_DIR$/dataclasses.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/vizOne_test.py" afterPath="$PROJECT_DIR$/server/vizOne_test.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/server/workers.py" afterPath="$PROJECT_DIR$/server/workers.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
@@ -34,11 +30,11 @@
   </component>
   <component name="FileEditorManager">
     <leaf>
-      <file leaf-file-name="WebClient.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="WebClient.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/client/WebClient.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.42316258">
-              <caret line="340" column="34" selection-start-line="340" selection-start-column="34" selection-end-line="340" selection-end-column="34" />
+            <state vertical-scroll-proportion="-4.8965516">
+              <caret line="327" column="41" selection-start-line="327" selection-start-column="41" selection-end-line="327" selection-end-column="41" />
               <folding />
             </state>
           </provider>
@@ -47,26 +43,12 @@
       <file leaf-file-name="workers.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/server/workers.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="-6.2413793">
-              <caret line="484" column="74" selection-start-line="484" selection-start-column="74" selection-end-line="484" selection-end-column="74" />
+            <state vertical-scroll-proportion="189.72414">
+              <caret line="238" column="0" selection-start-line="238" selection-start-column="0" selection-end-line="244" selection-end-column="37" />
               <folding>
                 <element signature="e#0#9#0" expanded="true" />
-                <element signature="e#1466#8062#0" expanded="false" />
-                <element signature="e#1570#1927#0" expanded="false" />
-                <element signature="e#8132#17958#0" expanded="false" />
-                <element signature="e#34434#35981#0" expanded="false" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="purgeVizOneFiles.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/server/purgeVizOneFiles.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.0">
-              <caret line="17" column="0" selection-start-line="17" selection-start-column="0" selection-end-line="17" selection-end-column="0" />
-              <folding>
-                <element signature="e#19#49#0" expanded="true" />
+                <element signature="e#3448#3805#0" expanded="false" />
+                <element signature="e#10010#19836#0" expanded="false" />
               </folding>
             </state>
           </provider>
@@ -75,25 +57,23 @@
       <file leaf-file-name="commands.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/server/commands.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.0">
-              <caret line="212" column="0" selection-start-line="212" selection-start-column="0" selection-end-line="212" selection-end-column="0" />
+            <state vertical-scroll-proportion="-16.862068">
+              <caret line="155" column="22" selection-start-line="155" selection-start-column="17" selection-end-line="155" selection-end-column="22" />
               <folding>
                 <element signature="e#0#16#0" expanded="true" />
-                <element signature="e#300#2338#0" expanded="false" />
                 <element signature="e#2416#3303#0" expanded="false" />
                 <element signature="e#3382#4303#0" expanded="false" />
                 <element signature="e#4371#6218#0" expanded="false" />
-                <element signature="e#6285#10617#0" expanded="false" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="client_config.xml" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/client/client_config.xml">
+      <file leaf-file-name="config.xml" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/server/config.xml">
           <provider selected="true" editor-type-id="text-editor">
             <state vertical-scroll-proportion="0.0">
-              <caret line="4" column="13" selection-start-line="4" selection-start-column="13" selection-end-line="4" selection-end-column="13" />
+              <caret line="17" column="13" selection-start-line="17" selection-start-column="13" selection-end-line="17" selection-end-column="13" />
               <folding />
             </state>
           </provider>
@@ -103,17 +83,37 @@
         <entry file="file://$PROJECT_DIR$/dataclasses.py">
           <provider selected="true" editor-type-id="text-editor">
             <state vertical-scroll-proportion="0.0">
-              <caret line="21" column="30" selection-start-line="21" selection-start-column="13" selection-end-line="21" selection-end-column="30" />
+              <caret line="104" column="23" selection-start-line="104" selection-start-column="23" selection-end-line="104" selection-end-column="23" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="SyncServer.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/syncserver/SyncServer.py">
+      <file leaf-file-name="ftpserver.py" pinned="false" current-in-tab="false">
+        <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/ftpserver.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="-9.172414">
-              <caret line="214" column="0" selection-start-line="214" selection-start-column="0" selection-end-line="214" selection-end-column="0" />
+            <state vertical-scroll-proportion="0.0">
+              <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="handlers.py" pinned="false" current-in-tab="false">
+        <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/handlers.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state vertical-scroll-proportion="-4.551724">
+              <caret line="3209" column="25" selection-start-line="3209" selection-start-column="17" selection-end-line="3209" selection-end-column="25" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="filesystems.py" pinned="false" current-in-tab="true">
+        <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/filesystems.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state vertical-scroll-proportion="-3.7483296">
+              <caret line="57" column="0" selection-start-line="57" selection-start-column="0" selection-end-line="57" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -122,12 +122,12 @@
       <file leaf-file-name="WebImporter_Server.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/server/WebImporter_Server.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="-5.6551723">
-              <caret line="381" column="54" selection-start-line="381" selection-start-column="54" selection-end-line="381" selection-end-column="54" />
+            <state vertical-scroll-proportion="-5.4827585">
+              <caret line="604" column="50" selection-start-line="604" selection-start-column="50" selection-end-line="604" selection-end-column="50" />
               <folding>
-                <element signature="e#7585#8166#0" expanded="false" />
-                <element signature="e#8264#8996#0" expanded="false" />
-                <element signature="e#9051#9103#0" expanded="false" />
+                <element signature="e#7621#8202#0" expanded="false" />
+                <element signature="e#8300#9032#0" expanded="false" />
+                <element signature="e#9087#9139#0" expanded="false" />
               </folding>
             </state>
           </provider>
@@ -136,8 +136,8 @@
       <file leaf-file-name="common.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/common.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="-4.1034484">
-              <caret line="16" column="21" selection-start-line="16" selection-start-column="8" selection-end-line="16" selection-end-column="21" />
+            <state vertical-scroll-proportion="-1.6206896">
+              <caret line="15" column="16" selection-start-line="15" selection-start-column="6" selection-end-line="15" selection-end-column="16" />
               <folding>
                 <element signature="e#0#11#0" expanded="true" />
               </folding>
@@ -196,16 +196,16 @@
         <option value="$PROJECT_DIR$/server/clean_incoming_media.py" />
         <option value="C:/Python34/Lib/site-packages/python3_one-0.5.0.8-py3.4.egg/vizone/net/message_queue.py" />
         <option value="$PROJECT_DIR$/server/vizOne_upload_put.py" />
-        <option value="$PROJECT_DIR$/server/config.xml" />
         <option value="$PROJECT_DIR$/server/commands.py" />
         <option value="$PROJECT_DIR$/server/vizOne_test.py" />
         <option value="$PROJECT_DIR$/server/purgeVizOneFiles.py" />
-        <option value="$PROJECT_DIR$/dataclasses.py" />
         <option value="$PROJECT_DIR$/syncserver/SyncServer.py" />
         <option value="$PROJECT_DIR$/client/client_config.xml" />
         <option value="$PROJECT_DIR$/common.py" />
-        <option value="$PROJECT_DIR$/server/workers.py" />
         <option value="$PROJECT_DIR$/server/WebImporter_Server.py" />
+        <option value="$PROJECT_DIR$/server/config.xml" />
+        <option value="$PROJECT_DIR$/dataclasses.py" />
+        <option value="$PROJECT_DIR$/server/workers.py" />
         <option value="$PROJECT_DIR$/client/WebClient.py" />
       </list>
     </option>
@@ -214,8 +214,8 @@
     <order />
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="122" />
-    <option name="y" value="84" />
+    <option name="x" value="125" />
+    <option name="y" value="32" />
     <option name="width" value="1598" />
     <option name="height" value="878" />
   </component>
@@ -252,6 +252,50 @@
             <PATH_ELEMENT>
               <option name="myItemId" value="External Libraries" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ExternalLibrariesNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="&lt; Python 3.4.2 (C:\Python34\python.exe) &gt;" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.NamedLibraryElementNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="WebImporter" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="External Libraries" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ExternalLibrariesNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="&lt; Python 3.4.2 (C:\Python34\python.exe) &gt;" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.NamedLibraryElementNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="site-packages" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="WebImporter" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="External Libraries" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ExternalLibrariesNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="&lt; Python 3.4.2 (C:\Python34\python.exe) &gt;" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.NamedLibraryElementNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="site-packages" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="pyftpdlib" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
           </PATH>
           <PATH>
@@ -589,8 +633,8 @@
       <list size="5">
         <item index="0" class="java.lang.String" itemvalue="Python.Webclient" />
         <item index="1" class="java.lang.String" itemvalue="Python.WebImporter_Server" />
-        <item index="2" class="java.lang.String" itemvalue="Python.purgeVizOneFiles" />
-        <item index="3" class="java.lang.String" itemvalue="Python.clean_incoming_media" />
+        <item index="2" class="java.lang.String" itemvalue="Python.clean_incoming_media" />
+        <item index="3" class="java.lang.String" itemvalue="Python.purgeVizOneFiles" />
         <item index="4" class="java.lang.String" itemvalue="Python.vizOne_test" />
       </list>
     </recent_temporary>
@@ -762,7 +806,13 @@
       <option name="project" value="LOCAL" />
       <updated>1440166391608</updated>
     </task>
-    <option name="localTasksCounter" value="27" />
+    <task id="LOCAL-00027" summary="implementing viz one and metadata upload process part 3">
+      <created>1440773422666</created>
+      <option name="number" value="00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1440773422666</updated>
+    </task>
+    <option name="localTasksCounter" value="28" />
     <servers />
   </component>
   <component name="TodoView">
@@ -775,22 +825,22 @@
     </todo-panel>
   </component>
   <component name="ToolWindowManager">
-    <frame x="122" y="84" width="1598" height="878" extended-state="0" />
+    <frame x="125" y="32" width="1598" height="878" extended-state="0" />
     <editor active="false" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" weight="0.19294871" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.3298611" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
+      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="12" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.38375974" sideWeight="0.5252898" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Application Servers" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.32962137" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" weight="0.3375" sideWeight="0.48946258" order="10" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.37916666" sideWeight="0.47471023" order="2" side_tool="false" content_ui="tabs" x="-551" y="396" width="1898" height="463" />
+      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.36944443" sideWeight="0.47471023" order="2" side_tool="false" content_ui="tabs" x="-551" y="396" width="1898" height="463" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.19020021" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33741647" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
-      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.38530067" sideWeight="0.49578503" order="3" side_tool="false" content_ui="tabs" />
+      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.38472223" sideWeight="0.49578503" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
-      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="12" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Commander" active="false" anchor="right" auto_hide="false" internal_type="SLIDING" type="SLIDING" visible="false" weight="0.4" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Inspection" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" weight="0.4" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
@@ -850,7 +900,8 @@
     <MESSAGE value="Working on viz one tests" />
     <MESSAGE value="implementing viz one upload process" />
     <MESSAGE value="implementing viz one upload process part 2" />
-    <option name="LAST_COMMIT_MESSAGE" value="implementing viz one upload process part 2" />
+    <MESSAGE value="implementing viz one and metadata upload process part 3" />
+    <option name="LAST_COMMIT_MESSAGE" value="implementing viz one and metadata upload process part 3" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
   </component>
   <component name="XDebuggerManager">
@@ -866,27 +917,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://C:/Python34/Lib/json/encoder.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="249" column="0" selection-start-line="249" selection-start-column="0" selection-end-line="249" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://C:/Python34/Lib/json/decoder.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="358" column="0" selection-start-line="358" selection-start-column="0" selection-end-line="358" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://C:/Python34/Lib/site-packages/gi/importer.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://C:/Python34/Lib/site-packages/bson/bson.py">
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
@@ -1013,13 +1043,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://C:/Python34/Lib/site-packages/tornado/websocket.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="212" column="0" selection-start-line="212" selection-start-column="0" selection-end-line="212" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/server/old.py">
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
@@ -1139,14 +1162,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/server/config.xml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="10" column="24" selection-start-line="10" selection-start-column="24" selection-end-line="10" selection-end-column="24" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/server/vizOne_test.py">
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
@@ -1159,14 +1174,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
           <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/dataclasses.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="21" column="30" selection-start-line="21" selection-start-column="13" selection-end-line="21" selection-end-column="30" />
           <folding />
         </state>
       </provider>
@@ -1192,74 +1199,118 @@
     <entry file="file://$PROJECT_DIR$/client/client_config.xml">
       <provider selected="true" editor-type-id="text-editor">
         <state vertical-scroll-proportion="0.0">
-          <caret line="4" column="13" selection-start-line="4" selection-start-column="13" selection-end-line="4" selection-end-column="13" />
+          <caret line="6" column="0" selection-start-line="6" selection-start-column="0" selection-end-line="6" selection-end-column="0" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/syncserver/SyncServer.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="-4.551724">
+          <caret line="205" column="69" selection-start-line="205" selection-start-column="63" selection-end-line="205" selection-end-column="69" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Python34/Lib/site-packages/tornado/websocket.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="0.0">
+          <caret line="414" column="0" selection-start-line="414" selection-start-column="0" selection-end-line="414" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/commands.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="-16.862068">
+          <caret line="155" column="22" selection-start-line="155" selection-start-column="17" selection-end-line="155" selection-end-column="22" />
+          <folding>
+            <element signature="e#0#16#0" expanded="true" />
+            <element signature="e#2416#3303#0" expanded="false" />
+            <element signature="e#3382#4303#0" expanded="false" />
+            <element signature="e#4371#6218#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/common.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="-4.1034484">
-          <caret line="16" column="21" selection-start-line="16" selection-start-column="8" selection-end-line="16" selection-end-column="21" />
+        <state vertical-scroll-proportion="-1.6206896">
+          <caret line="15" column="16" selection-start-line="15" selection-start-column="6" selection-end-line="15" selection-end-column="16" />
           <folding>
             <element signature="e#0#11#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/server/commands.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.0">
-          <caret line="212" column="0" selection-start-line="212" selection-start-column="0" selection-end-line="212" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#16#0" expanded="true" />
-            <element signature="e#300#2338#0" expanded="false" />
-            <element signature="e#2416#3303#0" expanded="false" />
-            <element signature="e#3382#4303#0" expanded="false" />
-            <element signature="e#4371#6218#0" expanded="false" />
-            <element signature="e#6285#10617#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/syncserver/SyncServer.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="-9.172414">
-          <caret line="214" column="0" selection-start-line="214" selection-start-column="0" selection-end-line="214" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/server/WebImporter_Server.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="-5.6551723">
-          <caret line="381" column="54" selection-start-line="381" selection-start-column="54" selection-end-line="381" selection-end-column="54" />
+        <state vertical-scroll-proportion="-5.4827585">
+          <caret line="604" column="50" selection-start-line="604" selection-start-column="50" selection-end-line="604" selection-end-column="50" />
           <folding>
-            <element signature="e#7585#8166#0" expanded="false" />
-            <element signature="e#8264#8996#0" expanded="false" />
-            <element signature="e#9051#9103#0" expanded="false" />
+            <element signature="e#7621#8202#0" expanded="false" />
+            <element signature="e#8300#9032#0" expanded="false" />
+            <element signature="e#9087#9139#0" expanded="false" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/server/config.xml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="0.0">
+          <caret line="17" column="13" selection-start-line="17" selection-start-column="13" selection-end-line="17" selection-end-column="13" />
+          <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/server/workers.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="-6.2413793">
-          <caret line="484" column="74" selection-start-line="484" selection-start-column="74" selection-end-line="484" selection-end-column="74" />
+        <state vertical-scroll-proportion="189.72414">
+          <caret line="238" column="0" selection-start-line="238" selection-start-column="0" selection-end-line="244" selection-end-column="37" />
           <folding>
             <element signature="e#0#9#0" expanded="true" />
-            <element signature="e#1466#8062#0" expanded="false" />
-            <element signature="e#1570#1927#0" expanded="false" />
-            <element signature="e#8132#17958#0" expanded="false" />
-            <element signature="e#34434#35981#0" expanded="false" />
+            <element signature="e#3448#3805#0" expanded="false" />
+            <element signature="e#10010#19836#0" expanded="false" />
           </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/client/WebClient.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.42316258">
-          <caret line="340" column="34" selection-start-line="340" selection-start-column="34" selection-end-line="340" selection-end-column="34" />
+        <state vertical-scroll-proportion="-4.8965516">
+          <caret line="327" column="41" selection-start-line="327" selection-start-column="41" selection-end-line="327" selection-end-column="41" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/dataclasses.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="0.0">
+          <caret line="104" column="23" selection-start-line="104" selection-start-column="23" selection-end-line="104" selection-end-column="23" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/ftpserver.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="0.0">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/handlers.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="-4.551724">
+          <caret line="3209" column="25" selection-start-line="3209" selection-start-column="17" selection-end-line="3209" selection-end-column="25" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Python34/Lib/site-packages/pyftpdlib/filesystems.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state vertical-scroll-proportion="-3.7483296">
+          <caret line="57" column="0" selection-start-line="57" selection-start-column="0" selection-end-line="57" selection-end-column="0" />
           <folding />
         </state>
       </provider>
