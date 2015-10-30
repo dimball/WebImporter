@@ -8,6 +8,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-10s) %(message)s',
                     )
+from time import gmtime, strftime
 
 
 class c_createTask(threading.Thread, hfn.c_HelperFunctions):
@@ -28,9 +29,13 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         self.Data["command"] = "expand_files"
         self.Data["payload"] = self.Payload
         self.Output["status"] = self.ID
+        self.InsertIndex = self.Payload["InsertIndex"]
+        self.Tasks.Jobs[self.ID].active = self.Payload["active"]
         self.Tasks.Jobs[self.ID].state = "busy"
 
-        self.Tasks.Order.append(self.ID)
+        self.Tasks.Order.insert(self.InsertIndex, self.ID)
+        #self.Tasks.Order.append(self.ID)
+
         self.highestorderID = 0
         for JobID in self.Tasks.Jobs:
 #            logging.debug("job id is:%s,%s", JobID, Tasks.Jobs[JobID].order)
@@ -45,9 +50,14 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         self.FileListData = self.FileExpand(self.ID,self.Payload)
 
         self.Tasks.Jobs[self.ID].filelist = self.FileListData[0]
+        logging.debug(self.FileListData[1])
         self.Tasks.Jobs[self.ID].filelistOrder = self.FileListData[1]
 
         logging.debug("Number of files:%s", len(self.Tasks.Jobs[self.ID].filelist))
+
+        self.Tasks.Jobs[self.ID].info["computername"] = os.environ['COMPUTERNAME']
+        self.Tasks.Jobs[self.ID].info["username"] = os.environ['USERNAME']
+        self.Tasks.Jobs[self.ID].info["created"] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.Tasks.Jobs[self.ID].state = "ready"
 
         '''
@@ -55,8 +65,9 @@ class c_createTask(threading.Thread, hfn.c_HelperFunctions):
         that other clients can see this as well.
         '''
         if self.Tasks.syncserver_client.connected:
-            self.Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put', self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks)), self.Tasks)
+            self.Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put', self.m_SerialiseTaskList([self.Tasks.Jobs[self.ID]], self.Tasks, False, True)), self.Tasks)
 
+        #needs to send data to the connected locally clients too??
 
         self.WriteJob(self.Tasks,self.ID)
 class c_remove_completed_tasks(threading.Thread, hfn.c_HelperFunctions):

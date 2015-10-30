@@ -7,7 +7,7 @@ class c_uploadTask():
         self.state = "queued"
         self.progress = 0.0
         self.priority = priority
-        self.FolderLink = None
+        self.PackageLink = None
 
 class c_file():
     def __init__(self, size):
@@ -33,16 +33,29 @@ class c_Task():
         self.filelistOrder = []
         self.metadata = []
         self.type = "local"
+        self.info = {}
 
 
     def GetCurrentProgress(self):
-        self.CopiedFiles = 0
+        self.TotalProgress = 0
         for f in self.filelist:
             if self.filelist[f].copied == True:
-                self.CopiedFiles += 1
+                if self.filelist[f].transcoded == True:
+                    self.TotalProgress += 100.0
+                else:
+                    self.TotalProgress += 50.0
 
-        self.progress = (self.CopiedFiles/len(self.filelist))*100
+
+        self.progress = (self.TotalProgress/len(self.filelist))
         return self.progress
+    def GetCurrentTotalProgress(self):
+        self.TotalProgress = 0
+        for f in self.filelist:
+            self.TotalProgress += self.filelist[f].progress
+
+        self.progress = (self.TotalProgress/len(self.filelist))
+        return self.progress
+
     def IsComplete(self):
         if self.GetCurrentProgress() == 100.0:
             return True

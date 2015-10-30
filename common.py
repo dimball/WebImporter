@@ -23,13 +23,46 @@ class c_metadata():
         self.data.append(self.DataElement)
     def m_get(self):
         return self.data
-
 class c_HelperFunctions():
 
-    def m_GetMetaData(self, aMetadataList, key):
-        for item in aMetadataList:
-            if key in item:
-                return item[key]
+    def m_FindPath(self, ID, inputPath, Tasks):
+
+        self.inputPath = inputPath.replace("\\","/")
+        self.neutralPath = self.inputPath.replace((Tasks.WorkData["sTargetDir"] + ID + "/"),"")
+        logging.debug(self.neutralPath)
+
+        for key, value in Tasks.Jobs[ID].filelist.items():
+
+            self.newKey = key.replace("\\","/")
+            logging.debug(self.newKey)
+            if self.neutralPath in self.newKey:
+                return key
+
+    def m_ExtractIDFromPath(self, path, Tasks):
+        path = path.replace("\\", "/")
+
+        self.head, self.tail = os.path.split(path)
+        self.head = self.head.replace(Tasks.WorkData["sTargetDir"], "")
+        self.elements = self.head.split("/")
+        return self.elements[0]
+
+    def m_convertSize(self, size):
+        try:
+            for x in ['bytes','KB','MB','GB']:
+                if size < 1024.0:
+                    return "%3.1f%s" % (size, x)
+                size /= 1024.0
+            return "%3.1f%s" % (size, 'TB')
+        except:
+            return ""
+
+    def m_GetMetaData(self, data, keydata):
+        for item in data:
+            for key,value in item.items():
+                if key == keydata:
+                    return value
+
+        return None
 
     def m_UploadCompleteTasks(self, Tasks):
 
@@ -38,8 +71,8 @@ class c_HelperFunctions():
         self.OrderCounter = 0
         for ID in Tasks.Order:
             if Tasks.Jobs[ID].type == "local":
-
-                if len(Tasks.Jobs[ID].metadata)>0 and Tasks.Jobs[ID].progress == 100.0:
+                #if it has metadata set and caching is complete
+                if len(Tasks.Jobs[ID].metadata)>0 and Tasks.Jobs[ID].progress == 50.0:
                     for file in Tasks.Jobs[ID].filelist:
                         if not Tasks.Jobs[ID].filelist[file].uploaded and not Tasks.Jobs[ID].filelist[file].transcoded:
                             self.priority = "medium"
@@ -57,24 +90,22 @@ class c_HelperFunctions():
         self.OrderCounter = 0
         #logging.debug("Attempting to change transcode priority order")
         for ID in Tasks.Order:
-            self.priority = "medium"
-            if self.OrderCounter == 0:
-                self.priority = "high"
-            elif self.OrderCounter == 1:
-                self.priority = "medium"
-            elif self.OrderCounter > 1:
-                self.priority = "low"
-
-            for file in Tasks.Jobs[ID].filelist:
+            for file in Tasks.Jobs[ID].filelistOrder:
                 if Tasks.Jobs[ID].filelist[file].uploaded and not Tasks.Jobs[ID].filelist[file].transcoded:
+                    self.priority = "medium"
+                    if self.OrderCounter == 0:
+                        self.priority = "high"
+                    elif self.OrderCounter == 1:
+                        self.priority = "medium"
+                    elif self.OrderCounter > 1:
+                        self.priority = "low"
                     #logging.debug("Setting priority")
                     if Tasks.Jobs[ID].filelist[file].transferlink != None:
                        # logging.debug("Has transfer link:%s", Tasks.Jobs[ID].filelist[file].transferlink)
                         self.TransRequest = TransferRequest(priority=self.priority)
                         logging.debug("Sending new priority to viz one:%s", Tasks.Jobs[ID].filelist[file].transferlink)
                         Tasks.VizOneClient.PUT(Tasks.Jobs[ID].filelist[file].transferlink, self.TransRequest, check_status=False)
-
-            self.OrderCounter += 1
+                        self.OrderCounter += 1
     def StringToBool(self,input):
         if input == "True":
             return True
@@ -113,7 +144,7 @@ class c_HelperFunctions():
                     logging.debug("Sending tasks to:%s", Tasks.GetClientNameFromHandler(client))
                 else:
                     logging.debug("Sending tasks to:%s", client)
-
+                logging.debug("command was:%s", command)
                 client.write_message(self.m_create_data(command, payload))
             except:
                 self.ClosedClients.append(client)
@@ -133,7 +164,8 @@ class c_HelperFunctions():
         self.data["command"] = command
         self.data["payload"] = payload
         return json.dumps(self.data)
-    def m_SerialiseTaskList(self, aTaskJobs, Tasks, bReport=True):
+
+    def m_SerialiseTaskList(self, aTaskJobs, Tasks, bReport=True,  bFiles=True, bGlobal=False):
         #this way we can add some extra information into the payload
         self.Data = {}
         self.Data["Order"] = Tasks.Order
@@ -147,23 +179,35 @@ class c_HelperFunctions():
             self.TaskData["Data"] = {}
 
             if Task.type == "local":
-                self.TaskData["Data"]["progress"] = Task.GetCurrentProgress()
+                self.TaskData["Data"]["progress"] = Task.GetCurrentTotalProgress()
             else:
                 self.TaskData["Data"]["progress"] = Task.progress
 
+            self.TaskData["Data"]["computername"] = Task.info["computername"]
+            self.TaskData["Data"]["username"] = Task.info["username"]
+            self.TaskData["Data"]["created"] = Task.info["created"]
+
             self.TaskData["Data"]["active"] = Task.active
-            self.TaskData["Data"]["type"] = "global"
+            if bGlobal:
+                self.TaskData["Data"]["type"] = "global"
+            else:
+                self.TaskData["Data"]["type"] = Task.type
             self.TaskData["Data"]["metadata"] = Task.metadata
             self.TaskData["Data"]["filelist"] = {}
+            #self.TaskData["Data"]["filelistOrder"] = []
             self.TaskData["Data"]["filelistOrder"] = Task.filelistOrder
-            for file in Task.filelistOrder:
-                self.FileData = {}
-                self.FileData["progress"] = Task.filelist[file].progress
-                self.FileData["copied"] = Task.filelist[file].copied
-                self.FileData["delete"] = Task.filelist[file].delete
-                self.FileData["size"] = Task.filelist[file].size
-                self.FileData["uploaded"] = Task.filelist[file].uploaded
-                self.TaskData["Data"]["filelist"][file] = self.FileData
+            if bFiles:
+                if len(Task.filelist)>0:
+                    for file in Task.filelistOrder:
+                        self.FileData = {}
+                        self.FileData["progress"] = Task.filelist[file].progress
+                        self.FileData["copied"] = Task.filelist[file].copied
+                        self.FileData["delete"] = Task.filelist[file].delete
+                        self.FileData["size"] = Task.filelist[file].size
+                        self.FileData["uploaded"] = Task.filelist[file].uploaded
+                        self.FileData["transcoded"] = Task.filelist[file].transcoded
+                        #self.FileData["transcodeProgress"] = Task.filelist[file].transcodeProgress
+                        self.TaskData["Data"]["filelist"][file] = self.FileData
 
             self.Data["TaskList"].append(self.TaskData)
         return self.Data
@@ -176,57 +220,29 @@ class c_HelperFunctions():
                 Tasks.Jobs[Task["ID"]] = dataclasses.c_Task(Task["ID"])
                 Tasks.Jobs[Task["ID"]].type = Task["Data"]["type"]
 
-            Tasks.Jobs[Task["ID"]].active = self.StringToBool(Task["Data"]["active"])
+            Tasks.Jobs[Task["ID"]].info["computername"] = Task["Data"]["computername"]
+            Tasks.Jobs[Task["ID"]].info["username"] = Task["Data"]["username"]
+            Tasks.Jobs[Task["ID"]].info["created"] = Task["Data"]["created"]
+
+            Tasks.Jobs[Task["ID"]].active = Task["Data"]["active"]
             Tasks.Jobs[Task["ID"]].progress = Task["Data"]["progress"]
             Tasks.Jobs[Task["ID"]].metadata = Task["Data"]["metadata"]
             Tasks.Jobs[Task["ID"]].filelistOrder = Task["Data"]["filelistOrder"]
-
-
-            for file in Tasks.Jobs[Task["ID"]].filelistOrder:
-                Tasks.Jobs[Task["ID"]].filelist[file] = dataclasses.c_file(Task["Data"]["filelist"][file]["size"])
-                Tasks.Jobs[Task["ID"]].filelist[file].progress = Task["Data"]["filelist"][file]["progress"]
-                Tasks.Jobs[Task["ID"]].filelist[file].copied = self.StringToBool(Task["Data"]["filelist"][file]["progress"])
-                Tasks.Jobs[Task["ID"]].filelist[file].delete = self.StringToBool(Task["Data"]["filelist"][file]["delete"])
-                Tasks.Jobs[Task["ID"]].filelist[file].uploaded = self.StringToBool(Task["Data"]["filelist"][file]["uploaded"])
-
+            logging.debug("number of files in filelist: %s",  len(Task["Data"]["filelist"]))
+            if len(Task["Data"]["filelist"])>0:
+                for file in Tasks.Jobs[Task["ID"]].filelistOrder:
+                    Tasks.Jobs[Task["ID"]].filelist[file] = dataclasses.c_file(Task["Data"]["filelist"][file]["size"])
+                    Tasks.Jobs[Task["ID"]].filelist[file].progress = Task["Data"]["filelist"][file]["progress"]
+                    Tasks.Jobs[Task["ID"]].filelist[file].copied = Task["Data"]["filelist"][file]["progress"]
+                    Tasks.Jobs[Task["ID"]].filelist[file].delete = Task["Data"]["filelist"][file]["delete"]
+                    Tasks.Jobs[Task["ID"]].filelist[file].uploaded = Task["Data"]["filelist"][file]["uploaded"]
+                    Tasks.Jobs[Task["ID"]].filelist[file].transcoded = Task["Data"]["filelist"][file]["transcoded"]
+                    #Tasks.Jobs[Task["ID"]].filelist[file].transcodeProgress = Task["Data"]["filelist"][file]["transcodeProgress"]
             if WSHandler != None:
                 Tasks.Jobs[Task["ID"]].WSHandler = WSHandler
 
             logging.debug("deSerialized task:%s", Task["ID"])
-    # def m_receive_all(self, sock):
-    #     self.HeaderLength = 32
-    #     self.PackageLength = 1024
-    #     self.data = ""
-    #
-    #     self.data = sock.recv(self.HeaderLength).decode('utf8')
-    #
-    #     if self.data != "":
-    #
-    #         self.length = self.data.split("|")[0]
-    #         self.SizeOfHeader = len(self.length)+1 # +1 is the "|" character
-    #         self.data = self.data.split("|")[1]
-    #         self.currentlength = self.HeaderLength-self.SizeOfHeader
-    #         while True:
-    #             #logging.debug(self.currentlength)
-    #             if (int(self.length)-self.currentlength)<self.PackageLength:
-    #                 #logging.debug("reading half:%s",int(self.length)-self.currentlength)
-    #                 if int(self.length)-self.currentlength < 0:
-    #                     self.line = sock.recv(int(self.length)).decode('utf8')
-    #                 else:
-    #                     self.line = sock.recv((int(self.length)-self.currentlength)).decode('utf8')
-    #                 #logging.debug(self.line)
-    #             else:
-    #                 #logging.debug("reading full")
-    #                 self.line = sock.recv(self.PackageLength).decode('utf8')
-    #
-    #             self.data += self.line
-    #             self.currentlength += len(self.line)
-    #
-    #             if self.currentlength >= int(self.length):
-    #                 break
-    #
-    #         #logging.debug(len(self.data))
-    #     return self.data
+
     def m_Is_ID_In_List(self,list,ID):
         self.bIsFound = False
         for CheckID in list:
@@ -264,6 +280,9 @@ class c_HelperFunctions():
         Task.set("state",str(TaskObject.state))
         Task.set("active",str(TaskObject.active))
         Task.set("order",str(TaskObject.order))
+        Task.set("computername", str(TaskObject.info["computername"]))
+        Task.set("user", str(TaskObject.info["username"]))
+        Task.set("created", str(TaskObject.info["created"]))
         FileList = ET.SubElement(Task,"FileList")
         for file in TaskObject.filelist:
             data = TaskObject.filelist[file]
@@ -277,8 +296,11 @@ class c_HelperFunctions():
             fileItem.set("assetlink", str(data.assetlink))
             fileItem.set("transcoded", str(data.transcoded))
 
+
         MetaDataList = ET.SubElement(Task, "MetaDataList")
         for metadata in TaskObject.metadata:
+
+            logging.debug("the metadata is:%a", metadata)
             MetadataItem = ET.SubElement(MetaDataList,"metadata")
             for key, value in metadata.items():
                 MetadataItem.set("key", key)
@@ -332,7 +354,7 @@ class c_HelperFunctions():
         return file_paths  # Self-explanatory.
     def FileExpand(self,ID,Payload):
         self.ID = ID
-        self.Payload = Payload
+        self.Payload = Payload["files"]
         self.FileList = {}
         self.FileListOrder = []
 
@@ -347,6 +369,6 @@ class c_HelperFunctions():
                     self.FileListOrder.append(self.path)
             elif FileObj["type"] == "file":
                 self.path = os.path.normpath(FileObj["data"])
-                self.FileList[self.path] = dataclasses.c_file(os.path.getsize(f))
+                self.FileList[self.path] = dataclasses.c_file(os.path.getsize(self.path))
                 self.FileListOrder.append(self.path)
         return [self.FileList,self.FileListOrder]

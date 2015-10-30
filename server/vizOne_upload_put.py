@@ -20,6 +20,9 @@ from vizone.payload.media.incomingcollection import IncomingCollection
 from vizone.net.message_queue import handle
 from vizone.client import HTTPClientError
 
+from vizone.resource.aggregate_asset import aggregate_asset_ItemSet
+from vizone.resource.aggregate_asset import create_aggregate_asset
+from vizone.resource.aggregate_asset import get_aggregate_asset_by_atom_id
 ##needs to override the incoming class as it is missing the atomid. Will be fixed in the next version of python One
 from vizone.payload.media.incoming import Incoming as _Incoming
 from vizone.descriptors import Value
@@ -42,7 +45,7 @@ class viz_one_test(hfn.c_HelperFunctions):
         self.series = None
         if (len(self.result.entries) == 0):
             ##if series does not exist then create one
-            self.series = Series(title="Mr Robot")
+            self.series = Series(title="s2")
             self.series = create_series(self.series)
         else:
             ##else just use the first one you find that matches it. Should not be duplicate series with the same name
@@ -53,13 +56,13 @@ class viz_one_test(hfn.c_HelperFunctions):
         self.SeriesPrograms = (Members(self.client.GET(self.series.down_link)))
         self.program = None
         for entry in self.SeriesPrograms.entries:
-            if entry.title == "Episode 1":
+            if entry.title == "e1":
                 self.program = entry.program
                 ##if it is found, then it should already be under the right series
                 break
 
         if self.program == None:
-            self.program = Program(title="Episode 1")
+            self.program = Program(title="e1")
             self.program = create_program(self.program)
             ##put the program in the series
             self.Program_urilist = UriList([self.program.atomid])
@@ -67,103 +70,142 @@ class viz_one_test(hfn.c_HelperFunctions):
 
         ##add the asset item into the folder
 
-        self.FoldersInPrograms = (Members(self.client.GET(self.program.down_link)))
-        self.folder = None
+        self.PackageInPrograms = (Members(self.client.GET(self.program.down_link)))
+        self.Package = None
 
-        for entry in self.FoldersInPrograms.entries:
-            if entry.title == "Card1":
-                self.folder = entry.folder
-                ##if it is found, then it should already be under the right series
+        for entry in self.PackageInPrograms.entries:
+            if entry.title == "c1":
+                self.Package = entry.aggregateasset
+                self.Package = get_aggregate_asset_by_atom_id(self.Package.atomid)
+
+                print("Found existing")
                 break
 
-        if self.folder == None:
-            self.folder = Folder(title="Card1")
-            self.folder = create_folder(self.folder)
+        if self.Package == None:
+            self.PackageSet = aggregate_asset_ItemSet(title="c1")
+            self.Package = create_aggregate_asset(self.PackageSet)
             ##add the folder item into the program
-            self.Folder_urilist = UriList([self.folder.atomid])
-            Members(self.client.POST(self.program.addmembers.add_last_link, self.Folder_urilist))
+            self.Package_urilist = UriList([self.Package.atomid])
+            Members(self.client.POST(self.program.addmembers.add_last_link, self.Package_urilist))
 
-        ## create an asset
+         ## create an asset
         self.asset_entry_collection = self.client.servicedoc.get_collection_by_keyword('asset')
         self.asset_entry_endpoint = self.asset_entry_collection.endpoint
+        self.placeholder = Item(title="test2")
+        ##get the placeholder asset entry
 
+        self.placeholder.parse(self.client.POST(self.asset_entry_endpoint, self.placeholder))
+        self.placeholder_urilist = UriList([self.placeholder.atomid])
 
-        self.aFiles = self.get_filepaths("d:/ftp/","*.mxf")
-        self.aItemAsset = []
-        self.aUploadList = []
-        self.RequestLinks = []
-        self.RequestList = {}
+        if self.Package.content == None:
+            self.Package.content = self.placeholder_urilist
+        else:
+            self.list = self.Package.content.uris
+            self.list.append(self.placeholder.atomid)
+            self.Package.content = UriList(self.list)
 
-        for filename in self.aFiles:
-            self.NewFile = os.path.normpath(filename)
-            self.PathHead, self.FileTail = os.path.split(self.NewFile)
-            self.FileHead, self.Extension = (os.path.splitext(self.FileTail))
-            #
-            self.placeholder = Item(title=self.FileHead)
-            ##get the placeholder asset entry
-            self.placeholder.parse(self.client.POST(self.asset_entry_endpoint, self.placeholder))
-            print("Placeholder atomid:", self.placeholder.atomid)
-            self.aItemAsset.append(self.placeholder.atomid)
-            #
-            self.drive, self.Path = os.path.splitdrive(self.PathHead)
-            #
-            self.aPathTokens = self.Path.split("\\")
-            self.NewPath = ""
-            for i in range(2, len(self.aPathTokens)):
-                self.NewPath += self.aPathTokens[i] + "/"
+        self.client.PUT(self.Package.edit_link, self.Package)
 
-            #wait for the file to be imported before it start on the next file. This is ok for a single machine, but for
-            #multiple then this will not work. It will need some sort of id mechanism as it checks all incoming media
-            #tasks from the server and does no filtering.
-            self.TransferRequest = None
-            with open(self.NewFile, 'rb') as f:
-                self.data = {}
-                self.data['Content-Type'] = 'application/octet-stream'
-                self.data['Expect'] = ''
+        # self.ItemAsset_urilist = UriList(self.aItemAsset)
+        # Members(self.Tasks.VizOneClient.POST(.addmembers.add_last_link, self.ItemAsset_urilist, check_status=False))
 
-                #uploads the file
-                self.r = self.client.PUT(self.placeholder.edit_media_link, f, headers=self.data)
+        # self.FoldersInPrograms = (Members(self.client.GET(self.program.down_link)))
+        # self.folder = None
 
-                #have to wait a little bit for the file to be finalised on the server
-                time.sleep(1)
+        # for entry in self.FoldersInPrograms.entries:
+        #     if entry.title == "Card1":
+        #         self.folder = entry.folder
+        #         ##if it is found, then it should already be under the right series
+        #         break
+        #
+        # if self.folder == None:
+        #     self.folder = Folder(title="Card1")
+        #     self.folder = create_folder(self.folder)
+        #     ##add the folder item into the program
+        #     self.Folder_urilist = UriList([self.folder.atomid])
+        #     Members(self.client.POST(self.program.addmembers.add_last_link, self.Folder_urilist))
 
-                #waits for the placeholder to be ready with the transfer request (transcoding request)
-                while True:
-                    self.placeholder = Item(self.client.GET(self.placeholder.self_link))
-                    try:
-                        self.r = self.client.GET(self.placeholder.upload_task_link)
-                        self.Incoming = Incoming(self.r)
-                        if self.Incoming.transfer_link != None:
-                            self.TransferRequest = TransferRequest(self.client.GET(self.Incoming.transfer_link))
-                            break
-                    except:
-                        time.sleep(1)
-            #at this point the transfer request link is available. It should be possible to set the priority here now
-
-            self.TransferRequest.priority = "low" ## can be "low", "medium", "high"
-            self.client.PUT(self.TransferRequest.self_link, self.TransferRequest, check_status=False)
-
-            self.RequestLinks.append(self.TransferRequest)
-            self.RequestList[self.TransferRequest.atomid] = {}
-            self.RequestList[self.TransferRequest.atomid]["path"] = self.NewPath + self.FileHead + self.Extension
-            self.RequestList[self.TransferRequest.atomid]["asset"] = self.placeholder.atomid
-
-
-
-        self.TM = handle(self.RequestLinks[0].monitor_link.href, self.handler, 'admin', 'admin')
-
-
-        ## Add the files to the folder
-        self.ItemAsset_urilist = UriList(self.aItemAsset)
-        Members(self.client.POST(self.folder.addmembers.add_last_link, self.ItemAsset_urilist))
-
-        print("Blocking until complete")
-        while len(self.RequestLinks)>0:
-            time.sleep(1)
-            continue
-
-        self.TM.close()
-        #self.RequestLinks[0].monitor_link.href
+        # ## create an asset
+        # self.asset_entry_collection = self.client.servicedoc.get_collection_by_keyword('asset')
+        # self.asset_entry_endpoint = self.asset_entry_collection.endpoint
+        # #
+        # #
+        # self.aFiles = self.get_filepaths("d:/ftp/","*.mxf")
+        # self.aItemAsset = []
+        # self.aUploadList = []
+        # self.RequestLinks = []
+        # self.RequestList = {}
+        #
+        # for filename in self.aFiles:
+        #     self.NewFile = os.path.normpath(filename)
+        #     self.PathHead, self.FileTail = os.path.split(self.NewFile)
+        #     self.FileHead, self.Extension = (os.path.splitext(self.FileTail))
+        #     #
+        #     self.placeholder = Item(title=self.FileHead)
+        #     ##get the placeholder asset entry
+        #     self.placeholder.parse(self.client.POST(self.asset_entry_endpoint, self.placeholder))
+        #     print("Placeholder atomid:", self.placeholder.atomid)
+        #     self.aItemAsset.append(self.placeholder.atomid)
+        #     #
+        #     self.drive, self.Path = os.path.splitdrive(self.PathHead)
+        #     #
+        #     self.aPathTokens = self.Path.split("\\")
+        #     self.NewPath = ""
+        #     for i in range(2, len(self.aPathTokens)):
+        #         self.NewPath += self.aPathTokens[i] + "/"
+        #
+        #     #wait for the file to be imported before it start on the next file. This is ok for a single machine, but for
+        #     #multiple then this will not work. It will need some sort of id mechanism as it checks all incoming media
+        #     #tasks from the server and does no filtering.
+        #     self.TransferRequest = None
+        #     with open(self.NewFile, 'rb') as f:
+        #         self.data = {}
+        #         self.data['Content-Type'] = 'application/octet-stream'
+        #         self.data['Expect'] = ''
+        #
+        #         #uploads the file
+        #         self.r = self.client.PUT(self.placeholder.edit_media_link, f, headers=self.data)
+        #
+        #         #have to wait a little bit for the file to be finalised on the server
+        #         time.sleep(1)
+        #
+        #         #waits for the placeholder to be ready with the transfer request (transcoding request)
+        #         while True:
+        #             self.placeholder = Item(self.client.GET(self.placeholder.self_link))
+        #             try:
+        #                 self.r = self.client.GET(self.placeholder.upload_task_link)
+        #                 self.Incoming = Incoming(self.r)
+        #                 if self.Incoming.transfer_link != None:
+        #                     self.TransferRequest = TransferRequest(self.client.GET(self.Incoming.transfer_link))
+        #                     break
+        #             except:
+        #                 time.sleep(1)
+        #     #at this point the transfer request link is available. It should be possible to set the priority here now
+        #
+        #     self.TransferRequest.priority = "low" ## can be "low", "medium", "high"
+        #     self.client.PUT(self.TransferRequest.self_link, self.TransferRequest, check_status=False)
+        #
+        #     self.RequestLinks.append(self.TransferRequest)
+        #     self.RequestList[self.TransferRequest.atomid] = {}
+        #     self.RequestList[self.TransferRequest.atomid]["path"] = self.NewPath + self.FileHead + self.Extension
+        #     self.RequestList[self.TransferRequest.atomid]["asset"] = self.placeholder.atomid
+        #
+        # #
+        # #
+        # # self.TM = handle(self.RequestLinks[0].monitor_link.href, self.handler, 'admin', 'admin')
+        # #
+        # #
+        # # ## Add the files to the folder
+        # # self.ItemAsset_urilist = UriList(self.aItemAsset)
+        # # Members(self.client.POST(self.folder.addmembers.add_last_link, self.ItemAsset_urilist))
+        # #
+        # # print("Blocking until complete")
+        # # while len(self.RequestLinks)>0:
+        # #     time.sleep(1)
+        # #     continue
+        # #
+        # # self.TM.close()
+        # #self.RequestLinks[0].monitor_link.href
 
 
     def handler(self, response):

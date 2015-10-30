@@ -30,12 +30,19 @@ from vizone.resource.series import get_seriess
 from vizone.payload.series import SeriesFeed
 from vizone.payload.folder import Folder
 from vizone.resource.folder import create_folder
+from vizone.resource.aggregate_asset import aggregate_asset_ItemSet
+from vizone.resource.aggregate_asset import create_aggregate_asset
+from vizone.resource.aggregate_asset import get_aggregate_asset_by_atom_id
+
 from vizone.payload.media import Incoming
 from vizone.payload.transfer import TransferRequest
 from vizone.resource.incoming import get_incomings
+from vizone.resource.series import get_series_by_atom_id
 from vizone.payload.media.incomingcollection import IncomingCollection
 from vizone.payload.series import SeriesFeed
 from vizone.net.message_queue import handle
+from vizone.vdf import Model
+from vizone.payload.metadata.metadataformcollection import MetadataFormCollection
 
 ##needs to override the incoming class as it is missing the atomid. Will be fixed in the next version of python One
 from vizone.payload.media.incoming import Incoming as _Incoming
@@ -46,8 +53,9 @@ class Incoming(_Incoming):
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
+FTPTasks = None
 
-class c_WebImporterFTPHandler(FTPHandler):
+class c_WebImporterFTPHandler(FTPHandler,hfn.c_HelperFunctions):
     def on_connect(self):
         pass
         # logging.debug("%s:%s connected", self.remote_ip, self.remote_port)
@@ -67,6 +75,27 @@ class c_WebImporterFTPHandler(FTPHandler):
     def on_file_sent(self, file):
         #this can be used to notify clients/server etc.
         logging.debug("File: %s is sent", file)
+        global FTPTasks
+        self.ID = self.m_ExtractIDFromPath(file, FTPTasks)
+        self.RealPath = self.m_FindPath(self.ID, file,FTPTasks)
+
+        FTPTasks.Jobs[self.ID].filelist[self.RealPath].progress = 75.0
+        logging.debug("Setting progress to 75 percent [%s] for file %s", self.ID, self.RealPath)
+
+        #needs to notify of the status to the syncserver
+        self.Payload = {}
+        self.Payload["ID"] = self.ID
+        self.Payload["progress"] = FTPTasks.Jobs[self.ID].filelist[self.RealPath].progress
+        self.Payload["file"] = self.RealPath
+
+        FTPTasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/file/set_progress", self.Payload))
+
+        for cli in FTPTasks.ProgressClients:
+            cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.Payload))
+
+        self.Payload["progress"] = FTPTasks.Jobs[self.ID].GetCurrentTotalProgress()
+        for cli in FTPTasks.ProgressClients:
+            cli.write_message(self.m_create_data("/client/v1/local/queue/task/set_progress", self.Payload))
         # do something when a file has been sent
         pass
 
@@ -96,6 +125,7 @@ class c_ftpServer(threading.Thread):
         self.authorizer.add_user(self.Tasks.WorkData["ftp_user"], self.Tasks.WorkData["ftp_pass"], self.Tasks.WorkData["ftp_root"], perm="elradfmw")
         self.authorizer.add_anonymous(self.Tasks.WorkData["ftp_root"])
         self.Tasks.FTPHandler = c_WebImporterFTPHandler
+
         self.Tasks.FTPHandler.authorizer = self.authorizer
 
         self.server = FTPServer(("0.0.0.0", 21), self.Tasks.FTPHandler)
@@ -165,7 +195,7 @@ class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
             count = 0
             self.Payload = {}
             self.Payload["ID"] = self.ID
-            self.Payload["file"] = sourcefile
+
 
             while True:
                 # Read blocks of size 2**20 = 1048576
@@ -182,15 +212,18 @@ class c_CopyWorker(threading.Thread, hfn.c_HelperFunctions):
                 fdst.write(buf)
                 count += len(buf)
                 #dict_Jobs[ID].workerlist[worker_name][sourcefile] = (count/filesize)*100
-                dict_Jobs[ID].filelist[sourcefile].progress = (count/filesize)*100
-                self.Payload["progress"] = (count/filesize)*100
+                dict_Jobs[ID].filelist[sourcefile].progress = (count/filesize)*100/2
+                self.Payload["progress"] = ((count/filesize)*100)/2
+
                 if filesize > 1024*1024*self.Tasks.WorkData["large_file_threshold"]:
-                    for cli in Tasks.ProgressClients:
-                        cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.Payload))
+
                     if Tasks.syncserver_client.connected:
+                        self.Payload["file"] = sourcefile
                         #this sends it to the sync server, who will notify all connected clients about the progress
                         Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/file/set_progress", self.Payload))
-
+                    for cli in Tasks.ProgressClients:
+                        self.Payload["file"] = os.path.split(sourcefile)[1]
+                        cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.Payload))
 
 
         finally:
@@ -267,6 +300,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
         self.large_worker_queue = queue.Queue()
         self.result_queue = queue.Queue()
         self.Threads = {}
+
     def Shutdown(self):
         self.aThreads = []
         for thread in self.Threads:
@@ -364,7 +398,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         break
 
                     self.CurrentSize = len(self.next_task.filelist)-len(self.files)
-                    self.dict_Jobs[self.ID].progress = (self.CurrentSize+self.CurrentQueueSize)/len(self.next_task.filelist)*100
+                    self.dict_Jobs[self.ID].progress = ((self.CurrentSize+self.CurrentQueueSize)/len(self.next_task.filelist)*100)/2
 
 
                     self.Payload = {}
@@ -382,11 +416,11 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         for file in self.Tasks.Jobs[self.ID].filelist:
                             if file not in self.aCompletedFiles:
                                 if self.Tasks.Jobs[self.ID].filelist[file].size < self.Tasks.WorkData["large_file_threshold"]*1024*1024:
-                                    if self.Tasks.Jobs[self.ID].filelist[file].progress == 100.0:
+                                    if self.Tasks.Jobs[self.ID].filelist[file].progress >= 50.0:
                                         self.FilePayload = {}
                                         self.FilePayload["ID"] = self.ID
                                         self.FilePayload["file"] = file
-                                        self.FilePayload["progress"] = self.Tasks.Jobs[self.ID].filelist[file].progress
+                                        self.FilePayload["progress"] = 50.0
                                         for cli in self.Tasks.ProgressClients:
                                             cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.FilePayload))
                                         if self.Tasks.syncserver_client.connected:
@@ -404,8 +438,8 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         """
                         #write out data each time a file has been processed
 
-                    if self.dict_Jobs[self.ID].progress >= 100.0:
-                        self.dict_Jobs[self.ID].progress = 100.0
+                    if self.dict_Jobs[self.ID].progress >= 50.0:
+                        self.dict_Jobs[self.ID].progress = 50.0
                         self.dict_Jobs[self.ID].active = False
 
                         #self.Tasks.syncserver_client.m_send(self.Tasks.syncserver_client.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.Payload))
@@ -415,9 +449,9 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                         break
 
 
-                if self.dict_Jobs[self.ID].progress >= 100.0:
+                if self.dict_Jobs[self.ID].progress >= 50.0:
                     self.dict_Jobs[self.ID].active = False
-                    self.dict_Jobs[self.ID].progress = 100.0
+                    self.dict_Jobs[self.ID].progress = 50.0
 
 
 
@@ -448,6 +482,7 @@ class c_LineCopyManager(threading.Thread,hfn.c_HelperFunctions):
                     logging.debug("Finished caching job")
             else:
                 logging.debug("No files in task")
+                #self.m_UploadCompleteTasks(self.Tasks)
         return
 class c_TranscodeMonitor(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self, Tasks):
@@ -456,6 +491,7 @@ class c_TranscodeMonitor(threading.Thread, hfn.c_HelperFunctions):
         self.Tasks = Tasks
         self.Started = False
         self.start()
+        self.uploadtask = None
 
     def startMonitor(self, MonitorLink):
         if not self.Started:
@@ -490,15 +526,36 @@ class c_TranscodeMonitor(threading.Thread, hfn.c_HelperFunctions):
             if self.r.progress != None:
                 self.head, self.tail = os.path.split(self.Tasks.RequestList[self.CurrentID.atomid]["path"])
 
-                print("[" + self.tail + "]Status = ", self.r.progress.done, self.r.progress.total)
+                print("[" + self.tail + "] Status = ", self.r.progress.done, self.r.progress.total)
+
+
                 self.uploadTask = self.Tasks.RequestList[self.CurrentID.atomid]["uploadTask"]
-                self.uploadTask.progress = (self.r.progress.done/self.r.progress.total)*100.0
+                #this is on a per file basis
+                self.uploadTask.progress = ((self.r.progress.done/self.r.progress.total)*100.0)
+
+                # needs to update the progress on file and task
+                self.uploadTask.ParentTask.filelist[self.Tasks.RequestList[self.CurrentID.atomid]["uploadTask"].file].progress = 75+(self.uploadTask.progress/4)
+                self.uploadTask.ParentTask.progress = self.uploadTask.ParentTask.GetCurrentTotalProgress()
+                print("Current status:", self.uploadTask.ParentTask.progress)
                 self.data = {}
                 self.data["ID"] = self.uploadTask.ParentTask.TaskID
                 self.data["progress"] = self.uploadTask.progress
-                self.data["file"] = self.uploadTask.file
+                self.data["file"] = os.path.split(self.uploadTask.file)[1]
+                for cli in self.Tasks.ProgressClients:
+                    cli.write_message(self.m_create_data("/client/v1/local/queue/task/file/set_progress", self.data))
 
-                self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/transcode/set_progress", self.data))
+                #self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/file/transcode/set_progress", self.data))
+
+
+                self.ProgressData = {}
+                self.ProgressData["ID"] = self.uploadTask.ParentTask.TaskID
+                self.ProgressData["progress"] = self.uploadTask.ParentTask.progress
+                self.Tasks.syncserver_progress_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/set_progress", self.ProgressData))
+
+                for cli in self.Tasks.ProgressClients:
+                    cli.write_message(self.m_create_data("/client/v1/local/queue/task/set_progress", self.ProgressData))
+
+
                 if self.r.progress.done == self.r.progress.total:
                     logging.debug("Transcode complete for:%s", os.path.split(self.uploadTask.file)[1])
                     self.uploadTask.FileTask.transcoded = True
@@ -506,11 +563,24 @@ class c_TranscodeMonitor(threading.Thread, hfn.c_HelperFunctions):
                     self.data["file"] = self.uploadTask.file
                     #notify everyone of this event
                     self.data["transcoded"] = True
-
-                    self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/transcoded",self.data))
+                    self.data["active"] = False
                     logging.debug("Transcoded = %s", self.Tasks.Jobs[self.uploadTask.ParentTask.TaskID].filelist[self.uploadTask.file].transcoded)
+                    self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/transcoded",self.data))
+
+                    self.activeData = {}
+                    self.activeData["ID"] = self.uploadTask.ParentTask.TaskID
+                    self.activeData["active"] = False
+
+                    logging.debug("Notifying syncserver of new active task:%s", self.uploadTask.ParentTask.TaskID)
+                    self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/active", self.activeData))
+
                     self.WriteJob(self.Tasks, self.uploadTask.ParentTask.TaskID)
                     self.Tasks.RequestLinks.remove(self.CurrentID)
+                    self.ChangeTranscodePriority(self.Tasks)
+
+
+
+
             else:
                 self.Tasks.RequestLinks.remove(self.CurrentID)
 class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
@@ -543,8 +613,29 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                         break
                     continue
             else:
+                logging.debug("Notifying syncserver of new upload task:%s", self.next_task.file)
+                self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].uploaded = True
+                self.data = {}
+                self.data["ID"] = self.next_task.ParentTask.TaskID
+                self.data["file"] = self.next_task.file
+                self.data["uploaded"] = True
+                self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/uploaded", self.data))
+
+                self.data = {}
+                self.data["ID"] = self.next_task.ParentTask.TaskID
+                self.data["file"] = self.next_task.file
+                self.data["active"] = True
+
+                self.Tasks.Jobs[self.next_task.ParentTask.TaskID].active = True
+                logging.debug("Notifying syncserver of new active task:%s", self.next_task.ParentTask.TaskID)
+                self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/queue/task/active", self.data))
+
+                ###announce this to the syncserver which will broadcast this to other clients logged on to the syncserver
+                #wait for the file to be imported before it start on the next file.
+
 
                 ###upload here
+
                 self.UploadFile = None
 
                 self.NewFile = os.path.normpath(self.next_task.file)
@@ -585,26 +676,23 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                     self.UploadFile = self.Tasks.WorkData["sTargetDir"] + self.next_task.ParentTask.TaskID + self.Path + "/" + self.FileHead + self.Extension
 
                 logging.debug("Starting upload:%s", self.UploadFile)
+
+
+
+
                 #we want to announce this to other clients here, as we do not want to abort a file import.
-                self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].uploaded = True
+
                 self.WriteJob(self.Tasks, self.next_task.ParentTask.TaskID)
                 ###once done, then announce this to the other webimporter servers
-                self.data = {}
-                self.data["ID"] = self.next_task.ParentTask.TaskID
-                self.data["file"] = self.next_task.file
-                self.data["uploaded"] = True
 
-                logging.debug("Notifying syncserver of new upload task:%s", self.next_task.file)
-                self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/uploaded", self.data))
-                ###announce this to the syncserver which will broadcast this to other clients logged on to the syncserver
-                #wait for the file to be imported before it start on the next file.
-                logging.debug("Upload Started for:%s", self.UploadFile)
 
                 self.TransRequest = None
                 if self.method == "ftp":
 
 
                     self.incoming = Incoming(self.Tasks.VizOneClient.POST(self.placeholder.import_unmanaged_link, self.UploadFile, check_status=False))
+
+                    self.Counter = 0
                     while True:
                         #get all incoming media tasks
                         self.Collection = IncomingCollection(get_incomings())
@@ -613,6 +701,7 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                         for incoming in self.incomings:
                             #if transferlink is NONE then
                             if incoming.atomid == self.incoming.atomid:
+                                self.Counter = 0
                                 logging.debug("Import progress:%s", self.UploadFile)
                                 if incoming.transfer_link != None:
                                     self.TransRequest = incoming.transfer_link
@@ -620,7 +709,14 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                                     self.bBreakOut = True
                         if self.bBreakOut == True:
                             break
+
+                            ##wait 2 minutes
+                        if self.Counter == 60:
+                            logging.debug("import process timed out")
+                            break
+
                         #wait until transfer request link is available
+                        self.Counter += 1
                         time.sleep(0.5)
                 else:
                     with open(self.UploadFile, 'rb') as f:
@@ -647,49 +743,75 @@ class c_UploadWorker(threading.Thread, hfn.c_HelperFunctions):
                                 time.sleep(1)
 
                 #at this point the transfer request link is available. It should be possible to set the priority here now
+                if self.TransRequest != None:
+                    self.TransRequest.priority = self.next_task.priority
+                    self.Tasks.VizOneClient.PUT(self.TransRequest.self_link, self.TransRequest, check_status=False)
 
-                self.TransRequest.priority = self.next_task.priority
-                self.Tasks.VizOneClient.PUT(self.TransRequest.self_link, self.TransRequest, check_status=False)
-
-                self.Tasks.RequestLinks.append(self.TransRequest)
-                self.Tasks.RequestList[self.TransRequest.atomid] = {}
-                if self.method == "ftp":
-                    self.Tasks.RequestList[self.TransRequest.atomid]["path"] = self.ftpLink
-                else:
-                    self.Tasks.RequestList[self.TransRequest.atomid]["path"] = self.UploadFile
-                logging.debug("dest file is:%s", self.UploadFile)
-                self.Tasks.RequestList[self.TransRequest.atomid]["asset"] = self.placeholder.self_link.href
-                self.Tasks.RequestList[self.TransRequest.atomid]["uploadTask"] = self.next_task
+                    self.Tasks.RequestLinks.append(self.TransRequest)
+                    self.Tasks.RequestList[self.TransRequest.atomid] = {}
 
 
-                #at this point there is a transferRequest monitor link. Monitoring can happen from here
-                if not self.Tasks.TM.Started:
-                    self.Tasks.TM.startMonitor(self.TransRequest.monitor_link)
+                    if self.method == "ftp":
+                        self.Tasks.RequestList[self.TransRequest.atomid]["path"] = self.ftpLink
+                    else:
+                        self.Tasks.RequestList[self.TransRequest.atomid]["path"] = self.UploadFile
 
 
-                ## Add the files to the folder
-                self.ItemAsset_urilist = UriList(self.aItemAsset)
-                Members(self.Tasks.VizOneClient.POST(self.next_task.FolderLink.addmembers.add_last_link, self.ItemAsset_urilist, check_status=False))
-                self.next_task.FileTask.transferlink = self.TransRequest.self_link.href
-                self.next_task.FileTask.assetlink = self.placeholder.self_link.href
-                self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].transferlink = self.TransRequest.self_link.href
-                self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].assetlink = self.placeholder.self_link.href
-                #notify other clients about adding the atom links to the assets
-                self.data = {}
-                self.data["ID"] = self.next_task.ParentTask.TaskID
-                self.data["file"] = self.next_task.file
-                self.data["transferlink"] = self.TransRequest.self_link.href
-                self.data["assetlink"] = self.placeholder.self_link.href
+                    #logging.debug("dest file is:%s", self.UploadFile)
+                    self.Tasks.RequestList[self.TransRequest.atomid]["asset"] = self.placeholder.self_link.href
 
-                self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/atomlink/update", self.data))
+                    #logging.debug("!!!!!!!!!!!!!!!" + self.TransRequest.atomid + "|" + self.next_task.ParentTask.TaskID + " !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                    self.Tasks.RequestList[self.TransRequest.atomid]["uploadTask"] = self.next_task
 
 
-                #write the data to disk
-                self.WriteJob(self.Tasks, self.next_task.ParentTask.TaskID)
+                    #at this point there is a transferRequest monitor link. Monitoring can happen from here
+                    if not self.Tasks.TM.Started:
+                        self.Tasks.TM.startMonitor(self.TransRequest.monitor_link)
+
+
+                    ## Add the files to the folder
+                    self.next_task.PackageLink = get_aggregate_asset_by_atom_id(self.next_task.PackageLink.atomid)
+
+                    if self.next_task.PackageLink.content == None:
+                        logging.debug("setting new content in package")
+                        self.list = []
+                        self.list.append(self.placeholder.atomid)
+                        self.next_task.PackageLink.content = UriList(self.list)
+                    else:
+                        logging.debug("Adding to package:%s", self.next_task.PackageLink)
+                        logging.debug("Contents of packagelink:%s", self.next_task.PackageLink.content.uris)
+                        self.list = self.next_task.PackageLink.content.uris
+                        self.list.append(self.placeholder.atomid)
+                        self.next_task.PackageLink.content = UriList(self.list)
+                        logging.debug(self.next_task.PackageLink.content.uris)
+
+                    self.Tasks.VizOneClient.PUT(self.next_task.PackageLink.edit_link, self.next_task.PackageLink, check_status=False)
+
+                    self.next_task.FileTask.transferlink = self.TransRequest.self_link.href
+                    self.next_task.FileTask.assetlink = self.placeholder.self_link.href
+                    self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].transferlink = self.TransRequest.self_link.href
+                    self.Tasks.Jobs[self.next_task.ParentTask.TaskID].filelist[self.next_task.file].assetlink = self.placeholder.self_link.href
+                    #notify other clients about adding the atom links to the assets
+                    self.data = {}
+                    self.data["ID"] = self.next_task.ParentTask.TaskID
+                    self.data["file"] = self.next_task.file
+                    self.data["transferlink"] = self.TransRequest.self_link.href
+                    self.data["assetlink"] = self.placeholder.self_link.href
+
+                    self.Tasks.syncserver_client.m_send(self.m_create_data("/syncserver/v1/global/upload/queue/task/file/atomlink/update", self.data))
+
+
+                    #write the data to disk
+                    self.WriteJob(self.Tasks, self.next_task.ParentTask.TaskID)
 class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
     def __init__(self,Tasks, Upload_manager_name):
         threading.Thread.__init__(self)
+        logging.debug("Starting upload manager")
         self.Tasks = Tasks
+        global FTPTasks
+        FTPTasks = Tasks
+
+
         self.upload_queue = Tasks.upload_queue
         self.name = Upload_manager_name
         self.Threads = []
@@ -720,6 +842,22 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
                 while self.Threads[thread].isAlive():
                     continue
                 del self.Threads[thread]
+    def SetMetadata(self,Tasks, object, metadata, type):
+
+        self.model_link = ("http://" + Tasks.WorkData["vizone_address"] +  "/api/metadata/form?qType=COLLECTION.Collection&qSubType=" + type)
+
+
+        self.models = MetadataFormCollection(self.Tasks.VizOneClient.GET(self.model_link))
+        self.Object_Desc = [model for model in self.models.entries if model.name == type][0]
+        self.ObjectItem = Model(self.Tasks.VizOneClient.GET(self.Object_Desc.self_link))
+        self.ObjectPayload = self.ObjectItem.to_payload()
+        for item in metadata:
+            for key, value in item.items():
+                self.ObjectPayload.set(key, value)
+
+        self.Tasks.VizOneClient.PUT(object.describedby_link, self.ObjectPayload)
+
+
     def run(self):
         while True:
             self.next_task = self.upload_queue.get()
@@ -728,10 +866,11 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
                 continue
             else:
                 #metadata has been added here.
-                self.AllSeries = SeriesFeed(get_seriess())
+                self.AllSeries = get_seriess()
                 self.series = self.m_GetMetaData(self.next_task.ParentTask.metadata, "series")
                 self.episode = self.m_GetMetaData(self.next_task.ParentTask.metadata, "episode")
                 self.card = self.m_GetMetaData(self.next_task.ParentTask.metadata, "card")
+                self.date = self.m_GetMetaData(self.next_task.ParentTask.metadata, "date")
 
 
                 self.SeriesObject = None
@@ -739,6 +878,7 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
                     if SeriesEntry.title == self.series:
                         logging.debug("Using existing series:%s", self.series)
                         self.SeriesObject = SeriesEntry
+                        #logging.debug(self.SeriesObject)
                         break
 
                 if not self.SeriesObject:
@@ -746,6 +886,15 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
                     #create the series
                     self.SeriesObject = Series(title=self.series)
                     self.SeriesObject = create_series(self.SeriesObject)
+                    logging.debug("Models LINK !!!!!!! %s", self.SeriesObject.models_link.href)
+                    #metadata can only be set if it does not have metadata already
+
+
+                self.metadata = hfn.c_metadata()
+                self.metadata.m_add("asset.title", self.series)
+                self.metadata.m_add("asset.description", "Elliot is a hacker")
+                self.SetMetadata(self.Tasks, self.SeriesObject, self.metadata.m_get(), 'series')
+                    #logging.debug(self.SeriesObject.type)
 
                 self.AllEpisodes = (Members(self.Tasks.VizOneClient.GET(self.SeriesObject.down_link)))
                 self.EpisodeObject = None
@@ -763,26 +912,41 @@ class c_UploadManager(threading.Thread, hfn.c_HelperFunctions):
                     self.EpisodeObject_urilist = UriList([self.EpisodeObject.atomid])
                     self.Tasks.VizOneClient.POST(self.SeriesObject.addmembers.add_last_link, self.EpisodeObject_urilist)
 
-                logging.debug("episodeObject:%s", self.EpisodeObject)
-                self.ALLFoldersInEpisodes = (Members(self.Tasks.VizOneClient.GET(self.EpisodeObject.down_link)))
-                self.FolderObject = None
+                # self.metadata = hfn.c_metadata()
+                # self.metadata.m_add("asset.title", self.episode)
+                # self.metadata.m_add("asset.description", "Daemon")
+                # self.SetMetadata(self.Tasks, self.EpisodeObject, self.metadata.m_get(), 'program')
+
+
+                self.ALLPackageInEpisodes = (Members(self.Tasks.VizOneClient.GET(self.EpisodeObject.down_link)))
+                self.PackageObject = None
 
                 ##use the metadata to create the folder name
-                for FolderEntry in self.ALLFoldersInEpisodes.entries:
-                    if FolderEntry.title == self.card:
-                        logging.debug("Using existing folder:%s", self.card)
-                        self.FolderObject = FolderEntry.folder
+                for PackageEntry in self.ALLPackageInEpisodes.entries:
+                    if PackageEntry.title == self.card:
+                        if PackageEntry.aggregateasset != None:
+                            logging.debug("Using existing Package:%s", self.card)
+                            self.PackageObject = PackageEntry.aggregateasset
+                            self.PackageObject = get_aggregate_asset_by_atom_id(self.PackageObject.atomid)
                         ##if it is found, then it should already be under the right series
-                        break
+                            break
 
-                if not self.FolderObject:
-                    logging.debug("Creating folder:%s", self.card)
-                    self.FolderObject = Folder(title=self.card)
-                    self.FolderObject = create_folder(self.FolderObject)
-                    ##add the folder item into the program
-                    self.FolderObject_urilist = UriList([self.FolderObject.atomid])
-                    Members(self.Tasks.VizOneClient.POST(self.EpisodeObject.addmembers.add_last_link, self.FolderObject_urilist))
+                if self.PackageObject == None:
 
-                self.next_task.FolderLink = self.FolderObject
+                    self.PackageObjectSet = aggregate_asset_ItemSet(title=self.card)
+                    self.PackageObjectID = create_aggregate_asset(self.PackageObjectSet)
+                    self.PackageObject = get_aggregate_asset_by_atom_id(self.PackageObjectID.atomid)
+                    self.PackageObject_urilist = UriList([self.PackageObject.atomid])
+                    logging.debug("Creating new package:%s", self.PackageObject)
+                    self.Tasks.VizOneClient.POST(self.EpisodeObject.addmembers.add_last_link, self.PackageObject_urilist)
+
+                # self.metadata = hfn.c_metadata()
+                # self.metadata.m_add("asset.title", self.card)
+                # self.metadata.m_add("asset.description", self.date)
+                # self.SetMetadata(self.Tasks, self.PackageObject, self.metadata.m_get(), 'folder')
+
+                self.next_task.PackageLink = self.PackageObject
                 logging.debug("putting task on worker queue:%s", self.next_task.file)
+
+
                 self.Tasks.upload_worker_queue.put(self.next_task)

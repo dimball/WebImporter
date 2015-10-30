@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.DEBUG,
 import dataclasses
 define("port", default=8908, help="run on the given port", type=int)
 import json
+import os
 class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
     ### Handles progress data sent from the webimporterServer client. This is then used to notify all clients connected
     ### to this progress handler in the Tasks.ProgressClients list
@@ -51,17 +52,17 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
                 self.SendData["progress"] = progress
                 self.SendData["file"] = file
                 self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
-    def m_setTranscodeProgress(self,ID, file, progress):
-        if ID in Tasks.Jobs:
-            if progress > Tasks.Jobs[ID].filelist[file].transcodeProgress:
-                #logging.debug("Setting progress for:%s:%s", ID, progress)
-                Tasks.Jobs[ID].filelist[file].transcodeProgress = progress
-                ### needs to only notify clients of the progress.
-                self.SendData = {}
-                self.SendData["ID"] = ID
-                self.SendData["progress"] = progress
-                self.SendData["file"] = file
-                self.m_NotifyClients("/webimporter/v1/global/queue/task/file/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
+    # def m_setTranscodeProgress(self,ID, file, progress):
+    #     if ID in Tasks.Jobs:
+    #         if progress > Tasks.Jobs[ID].filelist[file].transcodeProgress:
+    #             #logging.debug("Setting progress for:%s:%s", ID, progress)
+    #             Tasks.Jobs[ID].filelist[file].transcodeProgress = progress
+    #             ### needs to only notify clients of the progress.
+    #             self.SendData = {}
+    #             self.SendData["ID"] = ID
+    #             self.SendData["progress"] = progress
+    #             self.SendData["file"] = os.path.split(file)[1]
+    #             self.m_NotifyClients("/webimporter/v1/global/queue/task/file/transcode/set_progress", self.SendData, Tasks.ProgressClients, Tasks)
 
     def open(self):
         logging.debug('Syncserver new progress connection')
@@ -77,9 +78,10 @@ class ProgressHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions)
         elif self.Command == "/syncserver/v1/global/queue/task/file/set_progress":
             logging.debug('Progress data: %s', self.Payload)
             self.m_setFileProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
-        elif self.Command == "/syncserver/v1/global/queue/task/file/transcode/set_progress":
-            logging.debug('Progress data: %s', self.Payload)
-            self.m_setTranscodeProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
+        # elif self.Command == "/syncserver/v1/global/queue/task/file/transcode/set_progress":
+        #     logging.debug('Progress data: %s', self.Payload)
+        #     self.m_setTranscodeProgress(self.Payload["ID"], self.Payload["file"], self.Payload["progress"])
+
 
     def on_close(self):
         logging.debug('Progress socket connection closed %s', Tasks.GetClientNameFromHandler(self))
@@ -119,10 +121,13 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         #self.write_message(self.m_create_data("/webimporter/v1/connection/connected", 1))
     def on_message(self, message):
         self.data = json.loads(message)
-        #logging.debug(self.data["command"])
+
         #logging.debug(len(self.data["payload"]["TaskList"]))
         self.Command = self.data["command"]
         self.Payload = self.data["payload"]
+
+        logging.debug("Incoming command:%s", self.Command)
+        logging.debug("Incoming payload:%s", self.Payload)
         self.Output = {}
 
         if self.Command == "/syncserver/v1/global/queue/task/put":
@@ -165,7 +170,7 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         elif self.Command == "/syncserver/v1/global/queue/task/get":
             ############################ GET TASK  ############################
             logging.debug("Sending tasks to client:%s", Tasks.GetClientNameFromHandler(self))
-            self.m_reply(self.m_SerialiseSyncTasks(Tasks, False), self)
+            self.m_reply(self.m_SerialiseTaskList(Tasks, False), self)
         elif self.Command == "/syncserver/v1/global/queue/task/set_progress":
             ############################ SET PROGRESS ############################
 
@@ -188,7 +193,7 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
             self.m_getpriority()
         elif self.Command == "/syncserver/v1/server/register":
             ############################ REGISTER ############################
-            self.m_reply(self.m_SerialiseSyncTasks(Tasks, False), self)
+            self.m_reply(self.m_SerialiseTaskList(Tasks, False, True, True), self)
 
         elif self.Command == "/syncserver/v1/global/upload/queue/task/file/uploaded":
             ############################ Set uploaded flag ############################
@@ -197,7 +202,7 @@ class CommandHandler(tornado.websocket.WebSocketHandler, hfn.c_HelperFunctions):
         elif self.Command == "/syncserver/v1/global/upload/queue/task/file/transcoded":
             ############################ Set transcoded flag ############################
             Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transcoded = self.Payload["transcoded"]
-            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/transcoded", self.Payload, Tasks.CommandClients, Tasks)
+            self.m_NotifyClients("/webimporter/v1/local/queue/task/file/transcoded", self.Payload, Tasks.ProgressClients, Tasks)
 
         elif self.Command == "/syncserver/v1/global/queue/task/metadata/set":
             ############################ Set metadata ############################

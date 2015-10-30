@@ -325,14 +325,17 @@ if __name__ == "__main__":
     threaded_Websocket_Client("localhost", 9090, "progress", client_progress_handler())
     CommandHandler = threaded_Websocket_Client("localhost", 9090, "command", client_command_handler())
     #setpriority([])
-    #create_copytask(CommandHandler, "c:/data7")
-    # create_copytask(CommandHandler, "c:/data4")
-    # # time.sleep(1) #has to or else the next part will just see the first task and not the second one.
+    #create_copytask(CommandHandler, "c:/data2")
+    # #create_copytask(CommandHandler, "c:/data4")
+    # # # time.sleep(1) #has to or else the next part will just see the first task and not the second one.
+    # time.sleep(2)
+    #Add_MetaData(CommandHandler, 2)
+    # time.sleep(2)
     startqueue(CommandHandler)
     put_tasks_on_queue(CommandHandler)
     activate_queue(CommandHandler)
     # # Add_MetaData(CommandHandler, 0)
-    #Add_MetaData(CommandHandler, 0)
+
     #setpriority(CommandHandler, [])
     #deactivate_queue(CommandHandler)
     # time.sleep(5)

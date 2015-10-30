@@ -25,8 +25,9 @@ from common import c_metadata
 
 
 
-
-
+import psutil
+import os
+import datetime
 class c_ServerCommands(hfn.c_HelperFunctions):
     def m_setpriority(self,Payload):
         logging.debug("************Setting new priorities*************************")
@@ -48,12 +49,11 @@ class c_ServerCommands(hfn.c_HelperFunctions):
         if len(Tasks.LineManagers)>0:
             self.m_put_tasks_on_queue()
 
-
-
-
         #notify clients
-
-        self.m_NotifyClients("/client/v1/local/queue/set_priority", Payload, Tasks.CommandClients)
+        logging.debug(Payload)
+        self.data = {}
+        self.data["list"] = Payload
+        self.m_NotifyClients("/client/v1/local/queue/set_priority", self.data, Tasks.CommandClients)
 
     def m_setglobalpriority(self,Payload):
         if Tasks.syncserver_client.connected:
@@ -129,33 +129,22 @@ class c_ServerCommands(hfn.c_HelperFunctions):
             while Tasks.Jobs[ID].state != "ready":
                 continue
 
-            # if Tasks.Jobs[ID].state == "ready":
-            if Tasks.Jobs[ID].active == False:
-                if Tasks.Jobs[ID].type == "local":
-                    if Tasks.Jobs[ID].IsComplete() == False:
-                        Tasks.Jobs[ID].active = True
-                        #Tasks.Jobs[ID].workerlist = {}
-                        Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
-                        logging.debug("Activating task:%s", ID)
-                        #send new state to the sync server
-                        if Tasks.syncserver_client.connected:
-                            self.data = {}
-                            self.data["ID"] = ID
-                            self.data["active"] = True
-                            Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/active', self.data))
+            if not Tasks.Jobs[ID].active:
+                if not Tasks.Jobs[ID].IsComplete():
+                    Tasks.Jobs[ID].active = True
+                    #Tasks.Jobs[ID].workerlist = {}
+                    Tasks.Jobs[ID].progress = Tasks.Jobs[ID].GetCurrentProgress()
+                    logging.debug("Activating task:%s", ID)
+                    #send new state to the sync server
+                    if Tasks.syncserver_client.connected:
+                        self.data = {}
+                        self.data["ID"] = ID
+                        self.data["active"] = True
+                        Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/active', self.data))
 
             else:
                 self.Output["status"] = "Task already started"
-#                    Tasks.syncserver_client.m_reply(self.Output,self.request)
-#             else:
-#                 self.Output["status"] = "Task is busy. Try again when it is ready"
-#                 logging.debug("Task is busy, try it again")
-#  #               Tasks.syncserver_client.m_reply(self.Output,self.request)
 
-        # else:
-         #   logging.debug("jejeje")
-            #self.Output["status"] = "Task does not exist"
-          #  Tasks.syncserver_client.m_reply(self.Output,self.request)
     def m_get_tasks(self):
         self.aJobs = []
         for key,value in Tasks.Jobs.items():
@@ -167,7 +156,7 @@ class c_ServerCommands(hfn.c_HelperFunctions):
     def m_pause_task(self,ID):
         Tasks.Jobs[ID].active = False
         self.Output["status"] = "Paused job " + ID
-        Tasks.syncserver_client.m_reply(self.Output, self)
+        #Tasks.syncserver_client.m_reply(self.Output, self)
         self.WriteJob(Tasks,ID)
     def m_getpriority(self):
 
@@ -241,10 +230,12 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
         Tasks.CommandClients.append(self)
 
     def on_message(self, data):
+
         self.Data = json.loads(data)
         self.Command = self.Data["command"]
         self.Payload = self.Data["payload"]
-        #logging.debug("type of incoming:%s", type(self.Payload))
+        logging.debug("Command from client:%s", self.Command)
+        logging.debug("Payload from client:%s", self.Payload)
         self.Output = {}
         if self.Command == "/webimporter/v1/queue/task/create":
             ############################ CREATE TASK ############################
@@ -253,8 +244,21 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             #self.write_message(u"Your command was:" + self.Command)
         elif self.Command == "/webimporter/v1/queue/task/start":
             ############################ ACTIVATE TASK ############################
-            self.ID = self.Payload
-            self.m_start_task(self.ID)
+            ##this should take into account reordering as well as the typical use case is that the user drags
+            ##in a task from the inactive list, which includes a reorder as well as a start of the dragged in start
+
+            for ID in self.Payload["startList"]:
+                self.m_start_task(ID)
+
+            self.m_setglobalpriority(self.Payload["prioritylist"])
+
+
+
+
+            #this is already done when setting the priority
+
+            #self.m_put_tasks_on_queue()
+
         elif self.Command == "/webimporter/v1/queue/task/restart":
             ############################ RESTART TASK ############################
             self.ID = self.Payload
@@ -281,8 +285,8 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
         #     self.m_get_active_tasks()
         elif self.Command == "/webimporter/v1/queue/task/pause":
             ############################ PAUSE TASK ############################
-            self.ID = self.Payload
-            self.m_pause_task(self.ID)
+            for ID in self.Payload:
+                self.m_pause_task(ID)
         elif self.Command == "/webimporter/v1/queue/task/remove_completed":
             ############################ REMOVE COMPLETED TASKS ############################
             self.Thread = cm.c_remove_completed_tasks(self.Payload, Tasks)
@@ -325,6 +329,15 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             self.aJobs = []
             for ID in Tasks.Order:
                 self.aJobs.append(Tasks.Jobs[ID])
+            #send only task headers, no files in here.
+            self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks, False, False), Tasks.CommandClients, Tasks)
+
+
+
+        elif self.Command == "/webimporter/v1/local/task/request":
+            #Ask for only a specific task. This time send all of the data that is needed (i.e files in the task)
+            self.aJobs = []
+            self.aJobs.append(Tasks.Jobs[self.Payload["ID"]])
             self.m_NotifyClients("/client/v1/local/queue/task/put", self.m_SerialiseTaskList(self.aJobs, Tasks), Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
             logging.debug("Setting metadata")
@@ -334,13 +347,116 @@ class c_Client_CommandHandler(tornado.websocket.WebSocketHandler, c_ServerComman
             #logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
             #write the data
             self.WriteJob(Tasks, self.Payload["ID"])
-            self.m_UploadCompleteTasks(Tasks)
+            #self.m_UploadCompleteTasks(Tasks)
             if Tasks.syncserver_client.connected:
                 Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/metadata/set', self.Payload), Tasks)
 
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/get":
             logging.debug("Getting metadata")
+            self.data = {}
+            self.data["metadata"] = Tasks.Jobs[self.Payload["ID"]].metadata
+            self.m_NotifyClients("/client/v1/local/queue/task/metadata/put",self.data , Tasks.CommandClients, Tasks)
 
+        elif self.Command == "/webimporter/v1/local/queue/task/files/get":
+            logging.debug("Getting files")
+            self.aFiles = []
+            logging.debug(Tasks.Jobs[self.Payload["TaskID"]].filelistOrder)
+
+            for file in Tasks.Jobs[self.Payload["TaskID"]].filelistOrder:
+                self.file = Tasks.Jobs[self.Payload["TaskID"]].filelist[file]
+                self.FileData = {}
+                self.FileData["name"] = os.path.split(file)[1]
+                self.FileData["progress"] = self.file.progress
+                self.FileData["uploaded"] = self.file.uploaded
+                self.FileData["size"] = self.m_convertSize(self.file.size)
+                self.FileData["transcoded"] = self.file.transcoded
+                self.FileData["transcode_progress"] = self.file.transcodeProgress
+                self.aFiles.append(self.FileData)
+
+            self.data = {}
+            self.data["files"] = self.aFiles
+            self.data["ID"] = self.Payload["ID"]
+
+            self.m_NotifyClients("/client/v1/local/queue/task/files/put", self.data, Tasks.CommandClients, Tasks)
+        elif self.Command == "/webimporter/v1/local/treeservice/drives/get":
+            self.Partitions = psutil.disk_partitions()
+            self.data = {}
+            self.data["drives"] = []
+            for drive in self.Partitions:
+                self.data["drives"].append(drive.mountpoint)
+
+            self.m_NotifyClients("/client/v1/local/treeservice/drives/put", self.data, Tasks.CommandClients, Tasks)
+
+
+
+        elif self.Command == "/webimporter/v1/local/treeservice/path/get":
+            logging.debug(self.Payload)
+            self.folders = []
+
+            self.bContinue = True
+            try:
+                os.listdir(self.Payload["path"])
+            except WindowsError:
+                self.bContinue = False
+
+            if self.bContinue:
+                for name in os.listdir(self.Payload["path"]):
+                    if os.path.isdir(os.path.join(self.Payload["path"], name)):
+                        self.folderinfo = {}
+                        self.folderinfo["HasChildren"] = False
+                        try:
+                            self.subfolder = os.path.join(self.Payload["path"], name)
+                            self.aFolders = os.listdir(self.subfolder)
+                            for subname in self.aFolders:
+                                if os.path.isdir(os.path.join(self.subfolder, subname)):
+                                    self.folderinfo["HasChildren"] = True
+                                    break
+                        except:
+                            continue
+                        self.folderinfo["name"] = name
+                        self.folders.append(self.folderinfo)
+
+
+            self.data = {}
+            self.data["id"] = self.Payload["ID"]
+            self.data["folders"] = self.folders
+
+            self.m_NotifyClients("/client/v1/local/treeservice/path/put", self.data, Tasks.CommandClients, Tasks)
+        elif self.Command == "/webimporter/v1/local/treeservice/path/files/get":
+            self.data = {}
+            try:
+                os.listdir(self.Payload["path"])
+                self.files = []
+                for name in os.listdir(self.Payload["path"]):
+                    if not os.path.isdir(os.path.join(self.Payload["path"], name)):
+                        self.fileinfo = {}
+                        self.filenamepath = os.path.join(self.Payload["path"], name)
+                        self.fileinfo["name"] = name
+
+                        try:
+                            self.size = os.path.getsize(self.filenamepath)
+                            self.fileinfo["size"] = self.m_convertSize(self.size)
+
+                        except:
+                            self.fileinfo["size"] = ""
+
+                        try:
+                            self.timedate = time.strftime("%m/%d/%Y %I:%M:%S %p", time.localtime(os.path.getmtime(self.filenamepath)))
+                            #logging.debug(self.timedate)
+                        except:
+                            self.timedate = ""
+
+
+
+
+                        self.fileinfo["date"] = self.timedate
+                        self.fileinfo["fullpath"] = self.filenamepath
+                        self.files.append(self.fileinfo)
+            except:
+                self.files = []
+
+            self.data["files"] = self.files
+            self.m_NotifyClients("/client/v1/local/treeservice/path/files/put", self.data, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/server/shutdown":
             ############################ SHUTDOWN SERVER ############################
             logging.debug("Shutting down server")
@@ -369,6 +485,7 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             self.m_deSerializeTaskList(self.Payload, Tasks)
             ###push the new data to the client connected
             self.m_NotifyClients("/client/v1/local/queue/task/put",self.Payload, Tasks.CommandClients, Tasks)
+            self.m_put_tasks_on_queue()
         elif self.Command == "/webimporter/v1/local/queue/set_priority":
             ############################ SET LOCAL PRIORITY ON TASKS ############################
             logging.debug("!!!!!!!!!!!Changing priority!!!!!!")
@@ -381,16 +498,15 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             logging.debug("Setting upload state for:%s:%s", self.Payload["ID"], self.Payload["file"])
             Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].uploaded = self.Payload["uploaded"]
             self.m_NotifyClients("/client/v1/local/queue/task/file/uploaded", self.Payload, Tasks.CommandClients, Tasks)
-        elif self.Command == "/webimporter/v1/local/queue/task/file/transcoded":
-            ############################ SET LOCAL TRANSCODE STATE ON FILE LEVEL ############################
-            logging.debug("Setting transcoded state for:%s:%s", self.Payload["ID"], self.Payload["file"])
-            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transcoded = self.Payload["transcoded"]
-            self.m_NotifyClients("/client/v1/local/queue/task/file/transcoded", self.Payload, Tasks.CommandClients, Tasks)
+
         elif self.Command == "/webimporter/v1/local/queue/task/metadata/set":
             ############################ SET LOCAL METADATA ############################
             logging.debug("Setting metadata for:%s:%s", self.Payload["ID"], self.Payload["metadata"])
             Tasks.Jobs[self.Payload["ID"]].metadata = self.Payload["metadata"]
+
             logging.debug(self.m_GetMetaData(Tasks.Jobs[self.Payload["ID"]].metadata, "series"))
+            self.WriteJob(Tasks,self.Payload["ID"])
+
             self.m_UploadCompleteTasks(Tasks)
             self.m_NotifyClients("/client/v1/local/queue/task/metadata/set", self.Payload, Tasks.CommandClients, Tasks)
         elif self.Command == "/webimporter/v1/local/queue/task/active":
@@ -403,6 +519,7 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             self.dictID = {}
             self.GetTask = []
             self.SendTask = []
+
             for ID in self.Payload:
                 self.dictID[ID] = ID
                 #tasks that I do not have
@@ -416,18 +533,25 @@ class c_SyncServer_CommandHandler(c_ServerCommands):
             logging.debug("Uploading tasks:%s | Downloading tasks:%s", len(self.SendTask), len(self.GetTask))
             #if I have some jobs that you do not have, then send them only. the sent tasks will be appended to the global list.
 
+
             if len(self.SendTask) > 0:
                 logging.debug("Sending tasks that do not exists on sync server:%s", len(self.SendTask))
                 Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/put_no_reply', self.m_SerialiseTaskList(self.SendTask, Tasks)))
+
+
 
             if len(self.GetTask)>0:
                 #request only the jobs that i need
                 Tasks.syncserver_client.m_send(self.m_create_data('/syncserver/v1/global/queue/task/request', self.GetTask))
                 #the data will come back with an dictionary with a list of the order of the IDs and the a list of the data that we requested
+
                 self.m_deSerializeTaskList(json.loads(self.response), Tasks)
+
+
 
             self.m_show_tasks(Tasks)
             Tasks.ready = True
+
     def on_close(self):
         self.aRemove = []
         for ID in Tasks.Jobs:
@@ -452,16 +576,16 @@ class c_SyncServer_ProgressHandler(hfn.c_HelperFunctions):
         self.Command = self.Data["command"]
         self.Payload = self.Data["payload"]
         if self.Command == "/webimporter/v1/global/queue/task/set_progress":
-            logging.debug("Received TASK progress from syncserver:%s:%s", self.Payload["ID"], self.Payload["progress"])
+            #logging.debug("Received TASK progress from syncserver:%s:%s", self.Payload["ID"], self.Payload["progress"])
             Tasks.Jobs[self.Payload["ID"]].progress = self.Payload["progress"]
             # if self.Payload["progress"] == 100.0:
             #     self.m_UploadCompleteTasks(Tasks)
 
-
-        elif self.Command == "/webimporter/v1/global/queue/task/file/set_progress":
-            logging.debug("Received FILE progress from syncserver:%s:%s", self.Payload["file"], self.Payload["progress"])
-            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].progress = self.Payload["progress"]
-
+        elif self.Command == "/webimporter/v1/local/queue/task/file/transcoded":
+            ############################ SET LOCAL TRANSCODE STATE ON FILE LEVEL ############################
+            logging.debug("Setting transcoded state for:%s:%s", self.Payload["ID"], self.Payload["file"])
+            Tasks.Jobs[self.Payload["ID"]].filelist[self.Payload["file"]].transcoded = self.Payload["transcoded"]
+            self.m_NotifyClients("/client/v1/local/queue/task/file/transcoded", self.Payload, Tasks.ProgressClients, Tasks)
     def on_close(self):
         logging.debug("Disconnected from Syncserver Progress socket. Attempting to reconnect")
         while Tasks.syncserver_progress_client.connected == False:
@@ -518,31 +642,42 @@ class TornadoServer(c_ServerCommands):
             Tasks.Jobs[self.root.attrib["ID"]].state = self.root.attrib["state"]
             Tasks.Jobs[self.root.attrib["ID"]].active = self.StringToBool(self.root.attrib["active"])
             Tasks.Jobs[self.root.attrib["ID"]].order = int(self.root.attrib["order"])
-
+            Tasks.Jobs[self.root.attrib["ID"]].info["computername"] = self.root.attrib["computername"]
+            Tasks.Jobs[self.root.attrib["ID"]].info["username"] = self.root.attrib["user"]
+            Tasks.Jobs[self.root.attrib["ID"]].info["created"] = self.root.attrib["created"]
             self.bIsActive = True
-            self.CopiedFiles = 0
+
+
+            self.TotalProgress = 0
             for file in self.root.find("FileList").findall("File"):
                 Tasks.Jobs[self.root.attrib["ID"]].filelistOrder.append(file.attrib["file"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]] = dataclasses.c_file(int(file.attrib["size"]))
 
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].copied = self.StringToBool(file.attrib["copied"])
-                if self.StringToBool(file.attrib["copied"]) == True:
-                    Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 100.0
-                    self.CopiedFiles += 1
+                if self.StringToBool(file.attrib["copied"]):
+                    if self.StringToBool(file.attrib["transcoded"]):
+                        Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 100.0
+                        self.TotalProgress += 100.0
+                    else:
+                        Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].progress = 50.0
+                        self.TotalProgress += 50
 
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].delete = self.StringToBool(file.attrib["delete"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].uploaded = self.StringToBool(file.attrib["uploaded"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].size = int(file.attrib["size"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].transferlink = self.m_ReadString(file.attrib["transferlink"])
                 Tasks.Jobs[self.root.attrib["ID"]].filelist[file.attrib["file"]].assetlink = self.m_ReadString(file.attrib["assetlink"])
+
+            self.metadata = c_metadata()
             for metadata in self.root.find("MetaDataList").findall("metadata"):
-                self.metadata = c_metadata()
                 self.metadata.m_add(metadata.attrib["key"], metadata.attrib["value"])
 
-            if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
-                Tasks.Jobs[self.root.attrib["ID"]].progress = (self.CopiedFiles/len(Tasks.Jobs[self.root.attrib["ID"]].filelist))*100
-            else:
+            Tasks.Jobs[self.root.attrib["ID"]].metadata = self.metadata.m_get()
 
+
+            if len(Tasks.Jobs[self.root.attrib["ID"]].filelist)>0:
+                Tasks.Jobs[self.root.attrib["ID"]].progress = self.TotalProgress/len(Tasks.Jobs[self.root.attrib["ID"]].filelist)
+            else:
                 Tasks.Jobs[self.root.attrib["ID"]].progress = 0.0
 
         self.PreviousID = None
@@ -577,6 +712,7 @@ class TornadoServer(c_ServerCommands):
                         logging.debug("Loading LOCAL task:[%s] %s : %s files. %s percent complete", Tasks.Jobs[ID].order, ID, len(Tasks.Jobs[ID].filelist), (self.aIncompleteFiles/len(Tasks.Jobs[ID].filelist)*100))
 
         logging.debug("finished reading")
+
      def run(self):
         app = tornado.web.Application(
         handlers=[
@@ -593,6 +729,8 @@ class TornadoServer(c_ServerCommands):
         logging.debug ("Webimporter listening on port:%s", Tasks.WorkData["local_serverport"])
 
         #read the jobs locally first
+
+
         self.m_ReadJobList(not Tasks.syncserver_client.connected)
         if Tasks.syncserver_client.connected:
             #send all the jobs that has been read locally to the sync server. Do not get anything in return
@@ -605,8 +743,12 @@ class TornadoServer(c_ServerCommands):
         self.ftpserver = workers.c_ftpServer(Tasks)
 
         Tasks.MainLoop = tornado.ioloop.IOLoop.instance()
+        self.m_activate_queue()
+        self.m_activate_uploadqueue()
         logging.debug("starting mainloop")
+
         Tasks.MainLoop.start()
 
         Tasks.syncserver_client.connection.close()
         Tasks.syncserver_progress_client.connection.close()
+
